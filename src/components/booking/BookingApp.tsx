@@ -125,7 +125,7 @@ export function BookingApp() {
 
           {loading ? <p className="mt-6 text-slate-600">Loading bookings...</p> : null}
 
-          {!loading && bookings.length === 0 ? (
+          {!loading && !error && bookings.length === 0 ? (
             <div className="mt-6 rounded-md border border-dashed border-slate-300 p-6 text-center text-slate-600">No bookings yet.</div>
           ) : null}
 

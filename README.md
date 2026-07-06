@@ -20,3 +20,12 @@ npm run lint
 ```
 
 Local URL: `http://localhost:3000`
+
+## Admin Routes
+
+- `/admin/login`
+- `/admin/dashboard`
+- `/admin/users`
+- `/admin/roles`
+
+The admin area uses the backend HTTP-only cookie auth flow. Seed the first owner from the backend before signing in.
