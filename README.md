@@ -1,19 +1,22 @@
 # OnlineBooking Frontend
 
-Expo React Native frontend foundation for OnlineBooking.
+Next.js App Router frontend for creating and viewing bookings.
+
+## Environment
+
+Create `.env.local` from `.env.example`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5000/api
+```
 
 ## Scripts
 
-```powershell
+```bash
 npm install
-npm start
+npm run dev
+npm run build
+npm run lint
 ```
 
-## Environment Variables
-
-Copy `.env.example` to `.env`:
-
-```env
-EXPO_PUBLIC_API_URL=http://localhost:5000/api
-```
-
+Local URL: `http://localhost:3000`
