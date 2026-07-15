@@ -2,6 +2,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.env.production.example
 .next/
 out/
 dist/
@@ -15,3 +16,7 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 *.log
+
+# Ignore all Markdown documentation and agent instruction files.
+*.md
+**/*.md

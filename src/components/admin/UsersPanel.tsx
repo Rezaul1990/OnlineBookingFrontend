@@ -7,7 +7,8 @@ import type { AdminUser, Role } from "@/types/auth";
 export function UsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", roleId: "", status: "active" });
+  const [form, setForm] = useState({ name: "", email: "", roleId: "" });
+  const [setupLink, setSetupLink] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,13 +40,21 @@ export function UsersPanel() {
     setSuccess("");
 
     try {
-      await createUser(form);
-      setForm({ name: "", email: "", password: "", roleId: "", status: "active" });
-      setSuccess("User created successfully.");
+      const data = await createUser(form);
+      const link = `${window.location.origin}/admin/setup-password?token=${data.setupToken}`;
+      setSetupLink(link);
+      setForm({ name: "", email: "", roleId: "" });
+      setSuccess("User invited. Copy the setup link and send it to the user.");
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to create user.");
     }
+  };
+
+  const copySetupLink = async () => {
+    if (!setupLink) return;
+    await navigator.clipboard.writeText(setupLink);
+    setSuccess("Setup link copied.");
   };
 
   return (
@@ -94,10 +103,6 @@ export function UsersPanel() {
             <input className="rounded-md border border-slate-300 px-3 py-2" type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} required />
           </label>
           <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Password
-            <input className="rounded-md border border-slate-300 px-3 py-2" type="password" value={form.password} onChange={(event) => updateField("password", event.target.value)} required minLength={8} />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
             Role
             <select className="rounded-md border border-slate-300 px-3 py-2" value={form.roleId} onChange={(event) => updateField("roleId", event.target.value)} required>
               <option value="">Select role</option>
@@ -112,9 +117,18 @@ export function UsersPanel() {
 
         {error ? <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         {success ? <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}</p> : null}
+        {setupLink ? (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-slate-900">Password setup link</p>
+            <input className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" readOnly value={setupLink} />
+            <button className="mt-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button" onClick={copySetupLink}>
+              Copy link
+            </button>
+          </div>
+        ) : null}
 
         <button className="mt-5 rounded-md bg-teal-700 px-4 py-2 font-semibold text-white hover:bg-teal-800" type="submit">
-          Create user
+          Create invitation
         </button>
       </form>
     </section>

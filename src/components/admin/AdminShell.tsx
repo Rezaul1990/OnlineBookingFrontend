@@ -8,6 +8,9 @@ import type { AdminUser } from "@/types/auth";
 
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", permission: "dashboard.view" },
+  { href: "/admin/bookings", label: "Bookings", permission: "bookings.view" },
+  { href: "/admin/catalog", label: "Services", permission: "services.view" },
+  { href: "/admin/reports", label: "Reports", permission: "reports.view" },
   { href: "/admin/users", label: "Users", permission: "staff.view" },
   { href: "/admin/roles", label: "Roles", permission: "roles.view" }
 ];

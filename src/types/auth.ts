@@ -31,7 +31,7 @@ export type AdminUser = {
   _id?: string;
   name: string;
   email: string;
-  status: "active" | "inactive" | "suspended";
+  status: "invited" | "active" | "inactive" | "suspended";
   role?: {
     id: string;
     name: string;
@@ -39,6 +39,12 @@ export type AdminUser = {
     permissions: string[];
   } | null;
   roleId?: Role;
+};
+
+export type CreateUserResponse = {
+  user: AdminUser;
+  setupToken: string;
+  inviteExpiresAt: string;
 };
 
 export type DashboardStats = {

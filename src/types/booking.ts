@@ -1,19 +1,69 @@
+export type BookingSlot = {
+  _id: string;
+  serviceId?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  active: boolean;
+};
+
+export type Provider = {
+  _id: string;
+  name: string;
+  title: string;
+  email?: string;
+  phone?: string;
+  bio?: string;
+  imageUrl?: string;
+  serviceIds?: string[];
+  active: boolean;
+  slots: BookingSlot[];
+};
+
+export type Service = {
+  _id: string;
+  name: string;
+  slug: string;
+  category: string;
+  description: string;
+  imageUrl?: string;
+  durationMinutes: number;
+  price: number;
+  providerIds?: string[];
+  active: boolean;
+  providers: Provider[];
+};
+
 export type Booking = {
   _id: string;
   customerName: string;
   email: string;
   phone: string;
+  clientType: "new" | "returning";
+  serviceId: string;
   serviceName: string;
+  providerId: string;
+  providerName: string;
+  slotId: string;
   bookingDate: string;
+  slotLabel: string;
   notes?: string;
-  status: "pending" | "confirmed" | "cancelled";
+  publicToken?: string;
+  status: "pending_call" | "confirmed" | "reschedule_requested" | "cancelled" | "completed" | "no_show";
 };
 
 export type CreateBookingInput = {
   customerName: string;
   email: string;
   phone: string;
+  clientType: "new" | "returning";
+  serviceId: string;
   serviceName: string;
+  providerId: string;
+  providerName: string;
+  slotId: string;
   bookingDate: string;
+  slotLabel: string;
   notes: string;
 };
