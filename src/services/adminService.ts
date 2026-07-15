@@ -1,16 +1,20 @@
-import { apiRequest } from "./api";
+import { apiRequest, clearAdminToken, setAdminToken } from "./api";
 import type { Booking, Service } from "@/types/booking";
 import type { AdminUser, CreateUserResponse, DashboardStats, Permission, PermissionGroup, Role } from "@/types/auth";
 import type { BookingReport, BookingReportFilters } from "@/types/report";
 
 export const loginAdmin = (input: { email: string; password: string }) => {
-  return apiRequest<{ user: AdminUser }>("/auth/login", {
+  return apiRequest<{ token: string; user: AdminUser }>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input)
+  }).then((data) => {
+    setAdminToken(data.token);
+    return data;
   });
 };
 
 export const logoutAdmin = () => {
+  clearAdminToken();
   return apiRequest<null>("/auth/logout", { method: "POST" });
 };
 
