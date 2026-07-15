@@ -22,6 +22,20 @@ type DrawerMode = "service" | "provider" | "slot" | null;
 const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[] };
 const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[] };
 const slotInitial = { serviceId: "", providerId: "", slotId: "", date: "", startTime: "", endTime: "", capacity: 1 };
+const weeklyInitial = { enabled: true, selectedDays: [new Date().getDay()], startTime: "09:00", endTime: "17:00", capacity: 1, weeksAhead: 4 };
+const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const todayDateString = () => {
+  const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+};
+
+const addDays = (dateString: string, days: number) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
 function Drawer({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
@@ -51,6 +65,7 @@ export function CatalogPanel() {
   const [serviceForm, setServiceForm] = useState(serviceInitial);
   const [providerForm, setProviderForm] = useState(providerInitial);
   const [slotForm, setSlotForm] = useState(slotInitial);
+  const [weeklyForm, setWeeklyForm] = useState(weeklyInitial);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -85,6 +100,7 @@ export function CatalogPanel() {
     setServiceForm(serviceInitial);
     setProviderForm(providerInitial);
     setSlotForm(slotInitial);
+    setWeeklyForm(weeklyInitial);
   };
 
   const openNewService = () => {
@@ -124,7 +140,8 @@ export function CatalogPanel() {
   };
 
   const openNewSlot = (serviceId = "", providerId = "") => {
-    setSlotForm({ ...slotInitial, serviceId, providerId });
+    setSlotForm({ ...slotInitial, serviceId, providerId, date: todayDateString() });
+    setWeeklyForm(weeklyInitial);
     setDrawer("slot");
   };
 
@@ -138,6 +155,7 @@ export function CatalogPanel() {
       endTime: slot.endTime,
       capacity: slot.capacity
     });
+    setWeeklyForm({ ...weeklyInitial, enabled: false });
     setDrawer("slot");
   };
 
@@ -206,18 +224,39 @@ export function CatalogPanel() {
     setError("");
     setNotice("");
     try {
-      const input = {
-        date: slotForm.date,
-        startTime: slotForm.startTime,
-        endTime: slotForm.endTime,
-        capacity: slotForm.capacity
-      };
       if (isEditingSlot) {
+        const input = {
+          date: slotForm.date,
+          startTime: slotForm.startTime,
+          endTime: slotForm.endTime,
+          capacity: slotForm.capacity
+        };
         await updateSlot(slotForm.serviceId, slotForm.providerId, slotForm.slotId, input);
+      } else if (weeklyForm.enabled) {
+        if (!weeklyForm.selectedDays.length) throw new Error("Select at least one day.");
+        const today = todayDateString();
+        const totalDays = Math.max(1, weeklyForm.weeksAhead) * 7;
+        const dates = Array.from({ length: totalDays }, (_, index) => addDays(today, index)).filter((date) => {
+          return weeklyForm.selectedDays.includes(new Date(`${date}T00:00:00`).getDay());
+        });
+        for (const date of dates) {
+          await createSlot(slotForm.serviceId, slotForm.providerId, {
+            date,
+            startTime: weeklyForm.startTime,
+            endTime: weeklyForm.endTime,
+            capacity: weeklyForm.capacity
+          });
+        }
       } else {
+        const input = {
+          date: slotForm.date,
+          startTime: slotForm.startTime,
+          endTime: slotForm.endTime,
+          capacity: slotForm.capacity
+        };
         await createSlot(slotForm.serviceId, slotForm.providerId, input);
       }
-      setNotice(isEditingSlot ? "Time slot updated." : "Time slot added.");
+      setNotice(isEditingSlot ? "Time slot updated." : weeklyForm.enabled ? "Weekly availability added." : "Time slot added.");
       closeDrawer();
       await loadCatalog();
     } catch (requestError) {
@@ -462,13 +501,57 @@ export function CatalogPanel() {
               <option value="">Select provider</option>
               {slotProviderOptions.map((provider) => <option key={provider._id} value={provider._id}>{provider.name}</option>)}
             </select></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Date<input className="rounded-md border border-slate-300 px-3 py-2" type="date" value={slotForm.date} onChange={(event) => setSlotForm({ ...slotForm, date: event.target.value })} required /></label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.startTime} onChange={(event) => setSlotForm({ ...slotForm, startTime: event.target.value })} required /></label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.endTime} onChange={(event) => setSlotForm({ ...slotForm, endTime: event.target.value })} required /></label>
-            </div>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={slotForm.capacity} onChange={(event) => setSlotForm({ ...slotForm, capacity: Number(event.target.value) })} required /></label>
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save changes" : "Add slot"}</button>
+            {!isEditingSlot ? (
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input type="checkbox" checked={weeklyForm.enabled} onChange={(event) => setWeeklyForm({ ...weeklyForm, enabled: event.target.checked })} />
+                Weekly hours
+              </label>
+            ) : null}
+            {!isEditingSlot && weeklyForm.enabled ? (
+              <fieldset className="grid gap-4 rounded-md border border-slate-200 p-3">
+                <legend className="px-1 text-sm font-semibold text-slate-800">Weekly hours</legend>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Location<select className="rounded-md border border-slate-300 px-3 py-2" defaultValue="main">
+                  <option value="main">Main location</option>
+                </select></label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Mode</p>
+                    <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-700">
+                      <label className="flex items-center gap-1"><input type="checkbox" checked readOnly /> In person</label>
+                      <label className="flex items-center gap-1"><input type="checkbox" readOnly /> Phone</label>
+                      <label className="flex items-center gap-1"><input type="checkbox" readOnly /> Online</label>
+                    </div>
+                  </div>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Weeks ahead<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} max={12} value={weeklyForm.weeksAhead} onChange={(event) => setWeeklyForm({ ...weeklyForm, weeksAhead: Number(event.target.value) })} /></label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_130px_130px]">
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Days</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-700">
+                      {weekDays.map((day, index) => (
+                        <label key={day} className="flex items-center gap-1">
+                          <input type="checkbox" checked={weeklyForm.selectedDays.includes(index)} onChange={() => setWeeklyForm({ ...weeklyForm, selectedDays: toggleId(weeklyForm.selectedDays.map(String), String(index)).map(Number) })} />
+                          {day}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.startTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, startTime: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.endTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, endTime: event.target.value })} required /></label>
+                </div>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={weeklyForm.capacity} onChange={(event) => setWeeklyForm({ ...weeklyForm, capacity: Number(event.target.value) })} required /></label>
+              </fieldset>
+            ) : (
+              <>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Date<input className="rounded-md border border-slate-300 px-3 py-2" type="date" min={todayDateString()} value={slotForm.date} onChange={(event) => setSlotForm({ ...slotForm, date: event.target.value })} required /></label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.startTime} onChange={(event) => setSlotForm({ ...slotForm, startTime: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.endTime} onChange={(event) => setSlotForm({ ...slotForm, endTime: event.target.value })} required /></label>
+                </div>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={slotForm.capacity} onChange={(event) => setSlotForm({ ...slotForm, capacity: Number(event.target.value) })} required /></label>
+              </>
+            )}
+            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save changes" : weeklyForm.enabled ? "Add Hours" : "Add slot"}</button>
           </form>
         </Drawer>
       ) : null}

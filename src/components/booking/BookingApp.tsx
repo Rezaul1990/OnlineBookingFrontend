@@ -4,6 +4,52 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createBooking, fetchCatalog, updateBookingStatus } from "@/services/bookingService";
 import type { Booking, BookingSlot, CreateBookingInput, Provider, Service } from "@/types/booking";
 
+const todayDateString = () => {
+  const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+};
+
+const addDays = (dateString: string, days: number) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const futureTime = (offsetHours: number) => {
+  const date = new Date();
+  date.setHours(date.getHours() + offsetHours, 0, 0, 0);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+};
+
+const isFutureSlot = (slot: BookingSlot) => {
+  const today = todayDateString();
+  if (!slot.active || slot.date < today) return false;
+  if (slot.date > today) return true;
+
+  const now = new Date();
+  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  return slot.startTime > currentTime;
+};
+
+const sortSlots = (slots: BookingSlot[]) => {
+  return [...slots].sort((first, second) => `${first.date} ${first.startTime}`.localeCompare(`${second.date} ${second.startTime}`));
+};
+
+const normalizeCatalog = (catalogServices: Service[]) => {
+  return catalogServices
+    .map((service) => ({
+      ...service,
+      providers: service.providers
+        .map((provider) => ({
+          ...provider,
+          slots: sortSlots(provider.slots.filter(isFutureSlot))
+        }))
+        .filter((provider) => provider.slots.length > 0)
+    }))
+    .filter((service) => service.providers.length > 0);
+};
+
 const fallbackServices: Service[] = [
   {
     _id: "sample-consultation",
@@ -24,8 +70,9 @@ const fallbackServices: Service[] = [
         bio: "Best for first-time planning and service selection.",
         active: true,
         slots: [
-          { _id: "slot-a-1", date: "2026-07-08", startTime: "10:00", endTime: "10:45", capacity: 1, active: true },
-          { _id: "slot-a-2", date: "2026-07-08", startTime: "12:00", endTime: "12:45", capacity: 1, active: true }
+          { _id: "slot-a-1", date: addDays(todayDateString(), 0), startTime: futureTime(1), endTime: futureTime(2), capacity: 1, active: true },
+          { _id: "slot-a-2", date: addDays(todayDateString(), 0), startTime: futureTime(3), endTime: futureTime(4), capacity: 1, active: true },
+          { _id: "slot-a-3", date: addDays(todayDateString(), 1), startTime: "10:00", endTime: "10:45", capacity: 1, active: true }
         ]
       }
     ]
@@ -49,8 +96,8 @@ const fallbackServices: Service[] = [
         bio: "Available for regular service appointments.",
         active: true,
         slots: [
-          { _id: "slot-c-1", date: "2026-07-09", startTime: "09:30", endTime: "10:30", capacity: 1, active: true },
-          { _id: "slot-c-2", date: "2026-07-10", startTime: "14:00", endTime: "15:00", capacity: 1, active: true }
+          { _id: "slot-c-1", date: addDays(todayDateString(), 0), startTime: futureTime(2), endTime: futureTime(3), capacity: 1, active: true },
+          { _id: "slot-c-2", date: addDays(todayDateString(), 3), startTime: "14:00", endTime: "15:00", capacity: 1, active: true }
         ]
       }
     ]
@@ -60,6 +107,11 @@ const fallbackServices: Service[] = [
 const formatSlotDate = (slot: BookingSlot) => {
   const date = new Date(`${slot.date}T00:00:00`);
   return `${date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}, ${slot.startTime} - ${slot.endTime}`;
+};
+
+const formatDateChip = (dateString: string) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
 const toCalendarDate = (value: string) => {
@@ -77,6 +129,7 @@ export function BookingApp() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [selectedSlotId, setSelectedSlotId] = useState("");
   const [clientType, setClientType] = useState<"new" | "returning">("new");
   const [customerName, setCustomerName] = useState("");
@@ -91,17 +144,20 @@ export function BookingApp() {
 
   const selectedService = useMemo(() => services.find((service) => service._id === selectedServiceId), [selectedServiceId, services]);
   const selectedProvider = useMemo(() => selectedService?.providers.find((provider) => provider._id === selectedProviderId), [selectedProviderId, selectedService]);
-  const selectedSlot = useMemo(() => selectedProvider?.slots.find((slot) => slot._id === selectedSlotId), [selectedProvider, selectedSlotId]);
-  const step = selectedSlot ? 4 : selectedProvider ? 3 : selectedService ? 2 : 1;
+  const availableDates = useMemo(() => [...new Set((selectedProvider?.slots || []).map((slot) => slot.date))], [selectedProvider]);
+  const visibleSlots = useMemo(() => (selectedProvider?.slots || []).filter((slot) => slot.date === selectedDate), [selectedDate, selectedProvider]);
+  const selectedSlot = useMemo(() => visibleSlots.find((slot) => slot._id === selectedSlotId), [selectedSlotId, visibleSlots]);
+  const step = selectedSlot ? 4 : selectedDate ? 3 : selectedProvider ? 3 : selectedService ? 2 : 1;
 
   useEffect(() => {
     const loadPage = async () => {
       try {
         setLoading(true);
         const catalog = await fetchCatalog();
-        setServices(catalog.services.length ? catalog.services : fallbackServices);
+        const normalizedServices = normalizeCatalog(catalog.services);
+        setServices(normalizedServices.length ? normalizedServices : normalizeCatalog(fallbackServices));
       } catch {
-        setServices(fallbackServices);
+        setServices(normalizeCatalog(fallbackServices));
       } finally {
         setLoading(false);
       }
@@ -113,6 +169,7 @@ export function BookingApp() {
   const resetAfterService = (serviceId: string) => {
     setSelectedServiceId(serviceId);
     setSelectedProviderId("");
+    setSelectedDate("");
     setSelectedSlotId("");
     setError("");
     setNotice("");
@@ -120,6 +177,8 @@ export function BookingApp() {
 
   const resetAfterProvider = (providerId: string) => {
     setSelectedProviderId(providerId);
+    const provider = selectedService?.providers.find((item) => item._id === providerId);
+    setSelectedDate(provider?.slots[0]?.date || "");
     setSelectedSlotId("");
     setError("");
     setNotice("");
@@ -218,6 +277,7 @@ export function BookingApp() {
     if (!confirmedBooking) return;
     updateConfirmedStatus("reschedule_requested");
     setConfirmedBooking(null);
+    setSelectedDate(selectedProvider?.slots[0]?.date || "");
     setSelectedSlotId("");
     document.getElementById("booking")?.scrollIntoView({ behavior: "smooth" });
   };
@@ -366,13 +426,25 @@ export function BookingApp() {
 
               {selectedProvider ? (
                 <section>
-                  <h3 className="text-lg font-semibold">3. Select time slot</h3>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {selectedProvider.slots.map((slot) => (
-                      <button key={slot._id} onClick={() => setSelectedSlotId(slot._id)} type="button" className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition hover:border-teal-400 ${selectedSlotId === slot._id ? "border-teal-600 bg-teal-50 text-teal-900" : "border-slate-200 bg-white"}`}>
-                        {formatSlotDate(slot)}
-                      </button>
-                    ))}
+                  <h3 className="text-lg font-semibold">3. Select date and time</h3>
+                  <div className="mt-4 grid gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {availableDates.map((date) => (
+                        <button key={date} onClick={() => { setSelectedDate(date); setSelectedSlotId(""); }} type="button" className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition hover:border-teal-500 ${selectedDate === date ? "border-teal-700 bg-teal-700 text-white" : "border-teal-200 bg-teal-50 text-teal-900"}`}>
+                          {formatDateChip(date)}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedDate ? (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {visibleSlots.map((slot) => (
+                          <button key={slot._id} onClick={() => setSelectedSlotId(slot._id)} type="button" className={`rounded-md border px-4 py-3 text-left text-sm font-semibold transition hover:border-teal-400 ${selectedSlotId === slot._id ? "border-teal-600 bg-teal-50 text-teal-900" : "border-slate-200 bg-white"}`}>
+                            {slot.startTime} - {slot.endTime}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {availableDates.length === 0 ? <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-600">No current or future slots are available for this provider.</p> : null}
                   </div>
                 </section>
               ) : null}
