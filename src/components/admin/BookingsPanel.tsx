@@ -418,12 +418,13 @@ export function BookingsPanel() {
               <div className="grid gap-2">
                 <button
                   onClick={() => setEditingBooking(booking)}
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  className="inline-flex h-9 w-9 items-center justify-center justify-self-end rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                   disabled={savingId === booking._id}
                   type="button"
+                  title={`Edit booking for ${booking.customerName}`}
+                  aria-label={`Edit booking for ${booking.customerName}`}
                 >
                   <Pencil aria-hidden="true" size={15} strokeWidth={2.2} />
-                  <span>Edit</span>
                 </button>
                 <select
                   aria-label={`Status for ${booking.customerName}`}
