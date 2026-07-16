@@ -119,6 +119,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const [slotForm, setSlotForm] = useState(slotInitial);
   const [weeklyForm, setWeeklyForm] = useState(weeklyInitial);
   const [closedDateForm, setClosedDateForm] = useState({ date: todayDateString(), reason: "" });
+  const [serviceImageFile, setServiceImageFile] = useState<File | null>(null);
+  const [providerImageFile, setProviderImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -192,6 +194,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
     setSlotForm(slotInitial);
     setWeeklyForm(weeklyInitial);
     setClosedDateForm({ date: todayDateString(), reason: "" });
+    setServiceImageFile(null);
+    setProviderImageFile(null);
     setSelectedService(null);
     setSelectedProvider(null);
   };
@@ -208,10 +212,12 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
 
   const openNewService = () => {
     setServiceForm(serviceInitial);
+    setServiceImageFile(null);
     setDrawer("service");
   };
 
   const openEditService = (service: Service) => {
+    setServiceImageFile(null);
     setServiceForm({
       serviceId: service._id,
       name: service.name,
@@ -227,10 +233,12 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
 
   const openNewProvider = (serviceId = "") => {
     setProviderForm({ ...providerInitial, serviceIds: serviceId ? [serviceId] : [] });
+    setProviderImageFile(null);
     setDrawer("provider");
   };
 
   const openEditProvider = (provider: Provider) => {
+    setProviderImageFile(null);
     setProviderForm({
       providerId: provider._id,
       name: provider.name,
@@ -280,8 +288,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
         providerIds: serviceForm.providerIds,
         active: serviceForm.active
       };
-      if (isEditingService) await updateService(serviceForm.serviceId, input);
-      else await createService(input);
+      const data = isEditingService ? await updateService(serviceForm.serviceId, input) : await createService(input);
+      if (serviceImageFile) await uploadServiceImage(data.service._id, serviceImageFile);
       setNotice(isEditingService ? "Service updated." : "Service created.");
       closeDrawer();
       await loadCatalog();
@@ -312,8 +320,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
         active: providerForm.active
       };
       const routeServiceId = providerForm.serviceIds[0];
-      if (isEditingProvider) await updateProvider(routeServiceId, providerForm.providerId, input);
-      else await createProvider(routeServiceId, input);
+      const data = isEditingProvider ? await updateProvider(routeServiceId, providerForm.providerId, input) : await createProvider(routeServiceId, input);
+      if (providerImageFile) await uploadProviderImage(routeServiceId, data.provider._id, providerImageFile);
       setNotice(isEditingProvider ? "Provider updated." : "Provider added.");
       closeDrawer();
       await loadCatalog();
@@ -765,6 +773,11 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
               <label className="grid gap-2 text-sm font-medium text-slate-700">Price<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={0} value={serviceForm.price} onChange={(event) => setServiceForm({ ...serviceForm, price: Number(event.target.value) })} required /></label>
               <label className="flex items-center gap-2 pt-7 text-sm font-bold text-slate-700"><input type="checkbox" checked={serviceForm.active} onChange={(event) => setServiceForm({ ...serviceForm, active: event.target.checked })} /> Active</label>
             </div>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Service image
+              <input className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" type="file" accept="image/*" onChange={(event) => setServiceImageFile(event.target.files?.[0] || null)} />
+              {serviceImageFile ? <span className="text-xs font-semibold text-slate-500">{serviceImageFile.name}</span> : null}
+            </label>
             <fieldset className="grid gap-2 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-sm font-semibold text-slate-700">Providers for this service</legend>
               {providers.length ? providers.map((provider) => (
@@ -774,7 +787,6 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
                 </label>
               )) : <p className="text-sm text-slate-500">Create providers first, then assign them here.</p>}
             </fieldset>
-            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">Images are uploaded from the service list after saving, so the file is attached to a saved service record.</p>
             <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "service"}>{saving === "service" ? "Saving..." : isEditingService ? "Save service" : "Create service"}</button>
           </form>
         </Drawer>
@@ -801,8 +813,12 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
               <label className="grid gap-2 text-sm font-medium text-slate-700">Phone<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.phone} onChange={(event) => setProviderForm({ ...providerForm, phone: event.target.value })} /></label>
             </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Bio<textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" value={providerForm.bio} onChange={(event) => setProviderForm({ ...providerForm, bio: event.target.value })} /></label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Provider image
+              <input className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" type="file" accept="image/*" onChange={(event) => setProviderImageFile(event.target.files?.[0] || null)} />
+              {providerImageFile ? <span className="text-xs font-semibold text-slate-500">{providerImageFile.name}</span> : null}
+            </label>
             <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={providerForm.active} onChange={(event) => setProviderForm({ ...providerForm, active: event.target.checked })} /> Active provider</label>
-            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">A provider must be assigned to at least one service. Images are uploaded from the provider list after saving.</p>
             <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "provider"}>{saving === "provider" ? "Saving..." : isEditingProvider ? "Save provider" : "Create provider"}</button>
           </form>
         </Drawer>

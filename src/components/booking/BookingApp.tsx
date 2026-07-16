@@ -280,13 +280,29 @@ export function BookingApp() {
     URL.revokeObjectURL(url);
   };
 
-  const handleReschedule = () => {
+  const handleReschedule = async () => {
     if (!confirmedBooking) return;
-    updateConfirmedStatus("reschedule_requested");
-    setConfirmedBooking(null);
-    setSelectedDate(selectedProvider?.slots[0]?.date || "");
+
+    const booking = confirmedBooking;
+    const service = services.find((item) => item._id === booking.serviceId) || services.find((item) => item.name === booking.serviceName);
+    const provider = service?.providers.find((item) => item._id === booking.providerId) || service?.providers.find((item) => item.name === booking.providerName);
+
+    await updateConfirmedStatus("reschedule_requested");
+    setSelectedServiceId(service?._id || booking.serviceId);
+    setSelectedProviderId(provider?._id || booking.providerId);
+    setSelectedDate(provider?.slots[0]?.date || "");
     setSelectedSlotId("");
-    document.getElementById("booking")?.scrollIntoView({ behavior: "smooth" });
+    setClientType(booking.clientType);
+    setCustomerName(booking.customerName);
+    setEmail(booking.email);
+    setPhone(booking.phone);
+    setNotes(booking.notes || "");
+    setPaymentMethod(booking.paymentMethod);
+    setConfirmedBooking(null);
+    setNotice("Select a new slot and submit the reschedule request.");
+    requestAnimationFrame(() => {
+      document.getElementById("booking")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   return (
