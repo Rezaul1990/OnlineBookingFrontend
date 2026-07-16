@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { fetchBookingReport } from "@/services/adminService";
 import type { Booking } from "@/types/booking";
@@ -109,19 +109,17 @@ export function ReportsPanel() {
   };
 
   useEffect(() => {
-    loadReport();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const timeout = window.setTimeout(() => {
+      loadReport(filters);
+    }, 250);
 
-  const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    loadReport(filters);
-  };
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const resetFilters = () => {
     const nextFilters: BookingReportFilters = { status: "all", clientType: "all", dateFrom: "", dateTo: "", serviceName: "", providerName: "" };
     setFilters(nextFilters);
-    loadReport(nextFilters);
   };
 
   const printProviderInvoice = (provider: BookingReportNameGroup) => {
@@ -223,7 +221,7 @@ export function ReportsPanel() {
         </div>
       </div>
 
-      <form onSubmit={handleFilterSubmit} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             From
@@ -266,14 +264,11 @@ export function ReportsPanel() {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" type="submit">
-            Apply filters
-          </button>
           <button className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button" onClick={resetFilters}>
             Reset
           </button>
         </div>
-      </form>
+      </section>
 
       {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       {loading ? <p className="rounded-md border border-slate-200 bg-white p-5 text-slate-600">Loading reports...</p> : null}
