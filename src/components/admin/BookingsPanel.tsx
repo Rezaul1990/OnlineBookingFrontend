@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import {
   deleteAdminBooking,
   fetchAdminBookings,
@@ -415,12 +416,18 @@ export function BookingsPanel() {
                 <p className="mt-1 text-slate-500">{booking.phone}</p>
               </div>
               <div className="grid gap-2">
-                <button onClick={() => setEditingBooking(booking)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={savingId === booking._id} type="button">
-                  Edit
+                <button
+                  onClick={() => setEditingBooking(booking)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  disabled={savingId === booking._id}
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={15} strokeWidth={2.2} />
+                  <span>Edit</span>
                 </button>
                 <select
                   aria-label={`Status for ${booking.customerName}`}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm disabled:opacity-60"
                   value={booking.status}
                   onChange={(event) => changeStatus(booking, event.target.value as Booking["status"])}
                   disabled={savingId === booking._id}
