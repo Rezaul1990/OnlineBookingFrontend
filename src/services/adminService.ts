@@ -3,6 +3,17 @@ import type { Booking, Service } from "@/types/booking";
 import type { AdminUser, CreateUserResponse, DashboardStats, Permission, PermissionGroup, Role } from "@/types/auth";
 import type { BookingReport, BookingReportFilters } from "@/types/report";
 
+export type AdminBookingFilters = {
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  status?: "all" | Booking["status"];
+  clientType?: "all" | Booking["clientType"];
+  serviceName?: string;
+  providerName?: string;
+  sort?: string;
+};
+
 export const loginAdmin = (input: { email: string; password: string }) => {
   return apiRequest<{ token: string; user: AdminUser }>("/auth/login", {
     method: "POST",
@@ -26,8 +37,19 @@ export const fetchDashboard = () => {
   return apiRequest<{ stats: DashboardStats }>("/admin/dashboard");
 };
 
-export const fetchAdminBookings = () => {
-  return apiRequest<{ bookings: Booking[] }>("/admin/bookings");
+export const fetchAdminBookings = (filters: AdminBookingFilters = {}) => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value && value !== "all") params.set(key, value);
+  });
+
+  const query = params.toString();
+  return apiRequest<{
+    bookings: Booking[];
+    filters: AdminBookingFilters;
+    summary: { total: number; pendingCall: number; confirmed: number; completed: number; cancelled: number };
+    filterOptions: { services: string[]; providers: string[] };
+  }>(`/admin/bookings${query ? `?${query}` : ""}`);
 };
 
 export const fetchBookingReport = (filters: BookingReportFilters = {}) => {

@@ -1,7 +1,13 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
-import { deleteAdminBooking, fetchAdminBookings, updateAdminBooking, updateAdminBookingStatus } from "@/services/adminService";
+import {
+  deleteAdminBooking,
+  fetchAdminBookings,
+  type AdminBookingFilters,
+  updateAdminBooking,
+  updateAdminBookingStatus
+} from "@/services/adminService";
 import type { Booking } from "@/types/booking";
 
 const statusOptions: Array<{ value: Booking["status"]; label: string }> = [
@@ -14,21 +20,92 @@ const statusOptions: Array<{ value: Booking["status"]; label: string }> = [
 ];
 
 const statusTone: Record<Booking["status"], string> = {
-  pending_call: "bg-amber-50 text-amber-800 border-amber-200",
-  confirmed: "bg-teal-50 text-teal-800 border-teal-200",
-  reschedule_requested: "bg-sky-50 text-sky-800 border-sky-200",
-  cancelled: "bg-red-50 text-red-800 border-red-200",
-  completed: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  no_show: "bg-slate-100 text-slate-700 border-slate-200"
+  pending_call: "border-amber-200 bg-amber-50 text-amber-800",
+  confirmed: "border-cyan-200 bg-cyan-50 text-cyan-800",
+  reschedule_requested: "border-indigo-200 bg-indigo-50 text-indigo-800",
+  cancelled: "border-rose-200 bg-rose-50 text-rose-800",
+  completed: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  no_show: "border-slate-200 bg-slate-100 text-slate-700"
 };
+
+type DatePreset = "all" | "today" | "tomorrow" | "yesterday" | "this_week" | "this_month" | "custom";
+
+const datePresets: Array<{ value: DatePreset; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "today", label: "Today" },
+  { value: "tomorrow", label: "Tomorrow" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "this_week", label: "This week" },
+  { value: "this_month", label: "This month" },
+  { value: "custom", label: "Custom" }
+];
+
+const sortOptions = [
+  { value: "bookingDate_desc", label: "Newest booking date" },
+  { value: "bookingDate_asc", label: "Oldest booking date" },
+  { value: "newest", label: "Recently created" },
+  { value: "customerName_asc", label: "Customer A-Z" },
+  { value: "status_asc", label: "Status" }
+];
+
+const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const getWeekStart = (date: Date) => {
+  const start = new Date(date);
+  const day = start.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + offset);
+  return start;
+};
+
+const getPresetRange = (preset: DatePreset) => {
+  const today = new Date();
+  if (preset === "today") return { dateFrom: toInputDate(today), dateTo: toInputDate(today) };
+  if (preset === "tomorrow") {
+    const tomorrow = addDays(today, 1);
+    return { dateFrom: toInputDate(tomorrow), dateTo: toInputDate(tomorrow) };
+  }
+  if (preset === "yesterday") {
+    const yesterday = addDays(today, -1);
+    return { dateFrom: toInputDate(yesterday), dateTo: toInputDate(yesterday) };
+  }
+  if (preset === "this_week") {
+    const start = getWeekStart(today);
+    return { dateFrom: toInputDate(start), dateTo: toInputDate(addDays(start, 6)) };
+  }
+  if (preset === "this_month") {
+    return {
+      dateFrom: toInputDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+      dateTo: toInputDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+    };
+  }
+  return { dateFrom: "", dateTo: "" };
+};
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+
+const formatStatus = (status: Booking["status"]) => statusOptions.find((item) => item.value === status)?.label || status;
 
 function Drawer({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 bg-slate-950/30">
+    <div className="fixed inset-0 z-40 bg-slate-950/35">
       <button className="absolute inset-0 h-full w-full cursor-default" type="button" aria-label="Close booking drawer" onClick={onClose} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-xl">
+      <aside className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
-          <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-teal-700">Booking details</p>
+            <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+          </div>
           <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button" onClick={onClose}>
             Close
           </button>
@@ -41,19 +118,37 @@ function Drawer({ title, children, onClose }: { title: string; children: ReactNo
 
 export function BookingsPanel() {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"all" | Booking["status"]>("all");
+  const [filters, setFilters] = useState<AdminBookingFilters>({
+    search: "",
+    status: "all",
+    clientType: "all",
+    serviceName: "",
+    providerName: "",
+    sort: "bookingDate_desc"
+  });
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customRange, setCustomRange] = useState({ dateFrom: "", dateTo: "" });
+  const [filterOptions, setFilterOptions] = useState({ services: [] as string[], providers: [] as string[] });
+  const [summary, setSummary] = useState({ total: 0, pendingCall: 0, confirmed: 0, completed: 0, cancelled: 0 });
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  const resolvedFilters = useMemo(() => {
+    const range = datePreset === "custom" ? customRange : getPresetRange(datePreset);
+    return { ...filters, ...range };
+  }, [customRange, datePreset, filters]);
+
   const loadBookings = async () => {
     try {
       setLoading(true);
       setError("");
-      const data = await fetchAdminBookings();
+      const data = await fetchAdminBookings(resolvedFilters);
       setBookings(data.bookings);
+      setSummary(data.summary);
+      setFilterOptions(data.filterOptions);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load bookings.");
     } finally {
@@ -63,12 +158,23 @@ export function BookingsPanel() {
 
   useEffect(() => {
     loadBookings();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedFilters]);
 
-  const visibleBookings = useMemo(() => {
-    if (statusFilter === "all") return bookings;
-    return bookings.filter((booking) => booking.status === statusFilter);
-  }, [bookings, statusFilter]);
+  const activeFilterCount = [
+    filters.search,
+    filters.status && filters.status !== "all",
+    filters.clientType && filters.clientType !== "all",
+    filters.serviceName,
+    filters.providerName,
+    datePreset !== "all"
+  ].filter(Boolean).length;
+
+  const resetFilters = () => {
+    setFilters({ search: "", status: "all", clientType: "all", serviceName: "", providerName: "", sort: "bookingDate_desc" });
+    setDatePreset("all");
+    setCustomRange({ dateFrom: "", dateTo: "" });
+  };
 
   const changeStatus = async (booking: Booking, status: Booking["status"]) => {
     setSavingId(booking._id);
@@ -93,6 +199,7 @@ export function BookingsPanel() {
     try {
       await deleteAdminBooking(booking._id);
       setBookings((current) => current.filter((item) => item._id !== booking._id));
+      setSummary((current) => ({ ...current, total: Math.max(current.total - 1, 0) }));
       setNotice("Booking deleted.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to delete booking.");
@@ -119,98 +226,186 @@ export function BookingsPanel() {
     }
   };
 
+  const metricCards = [
+    { label: "Matching bookings", value: summary.total },
+    { label: "Pending call", value: summary.pendingCall },
+    { label: "Confirmed", value: summary.confirmed },
+    { label: "Completed", value: summary.completed },
+    { label: "Cancelled", value: summary.cancelled }
+  ];
+
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-950">Bookings</h1>
-          <p className="mt-1 text-sm text-slate-600">Manage customer booking requests, call confirmation, rescheduling, cancellations, and completion status.</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-teal-700">Operations</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-950">Bookings</h1>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">Search, filter, confirm, reschedule, complete, cancel, and edit customer booking requests from one focused admin list.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            aria-label="Booking status filter"
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as "all" | Booking["status"])}
-          >
-            <option value="all">All statuses</option>
-            {statusOptions.map((status) => (
-              <option key={status.value} value={status.value}>{status.label}</option>
-            ))}
-          </select>
-          <button onClick={loadBookings} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">
+          <button onClick={resetFilters} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">
+            Reset
+          </button>
+          <button onClick={loadBookings} className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" type="button">
             Refresh
           </button>
         </div>
       </div>
 
-      {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {metricCards.map((card) => (
+          <article key={card.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">{card.value}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {datePresets.map((preset) => (
+            <button
+              key={preset.value}
+              className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                datePreset === preset.value ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+              type="button"
+              onClick={() => setDatePreset(preset.value)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_repeat(5,minmax(150px,1fr))]">
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Search
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 font-normal text-slate-950"
+              placeholder="Name, phone, email, service"
+              value={filters.search || ""}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Status
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as AdminBookingFilters["status"] }))}>
+              <option value="all">All statuses</option>
+              {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Client
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.clientType} onChange={(event) => setFilters((current) => ({ ...current, clientType: event.target.value as AdminBookingFilters["clientType"] }))}>
+              <option value="all">All clients</option>
+              <option value="new">New</option>
+              <option value="returning">Returning</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Service
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.serviceName || ""} onChange={(event) => setFilters((current) => ({ ...current, serviceName: event.target.value }))}>
+              <option value="">All services</option>
+              {filterOptions.services.map((service) => <option key={service} value={service}>{service}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Provider
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.providerName || ""} onChange={(event) => setFilters((current) => ({ ...current, providerName: event.target.value }))}>
+              <option value="">All providers</option>
+              {filterOptions.providers.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            Sort
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}>
+              {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {datePreset === "custom" ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+              From
+              <input className="rounded-md border border-slate-300 px-3 py-2 font-normal" type="date" value={customRange.dateFrom} onChange={(event) => setCustomRange((current) => ({ ...current, dateFrom: event.target.value }))} />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+              To
+              <input className="rounded-md border border-slate-300 px-3 py-2 font-normal" type="date" value={customRange.dateTo} onChange={(event) => setCustomRange((current) => ({ ...current, dateTo: event.target.value }))} />
+            </label>
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+          <span className="rounded-md bg-slate-100 px-2 py-1">{activeFilterCount} active filters</span>
+          {resolvedFilters.dateFrom ? <span className="rounded-md bg-slate-100 px-2 py-1">From {resolvedFilters.dateFrom}</span> : null}
+          {resolvedFilters.dateTo ? <span className="rounded-md bg-slate-100 px-2 py-1">To {resolvedFilters.dateTo}</span> : null}
+        </div>
+      </section>
+
+      {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
       {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
-      <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+        <div className="hidden grid-cols-[1.2fr_1.1fr_1fr_0.9fr_1fr_240px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+          <span>Customer</span>
+          <span>Booking</span>
+          <span>Service</span>
+          <span>Status</span>
+          <span>Contact</span>
+          <span>Actions</span>
+        </div>
+
         {loading ? <p className="p-5 text-slate-600">Loading bookings...</p> : null}
-        {!loading && visibleBookings.length === 0 ? (
-          <p className="m-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No bookings found.</p>
+        {!loading && bookings.length === 0 ? (
+          <div className="m-5 rounded-md border border-dashed border-slate-300 p-8 text-center">
+            <p className="font-semibold text-slate-950">No bookings match these filters.</p>
+            <p className="mt-1 text-sm text-slate-600">Try another date preset, clear search text, or reset filters.</p>
+          </div>
         ) : null}
 
         <div className="divide-y divide-slate-200">
-          {visibleBookings.map((booking) => (
-            <article key={booking._id} className="grid gap-4 p-5 xl:grid-cols-[1fr_320px]">
+          {bookings.map((booking) => (
+            <article key={booking._id} className="grid gap-4 p-4 xl:grid-cols-[1.2fr_1.1fr_1fr_0.9fr_1fr_240px] xl:items-center">
               <div>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-950">{booking.customerName}</h2>
-                    <p className="mt-1 text-sm text-slate-600">{booking.serviceName} with {booking.providerName}</p>
-                  </div>
-                  <span className={`rounded-md border px-3 py-1 text-xs font-bold uppercase ${statusTone[booking.status]}`}>
-                    {statusOptions.find((status) => status.value === booking.status)?.label || booking.status}
-                  </span>
-                </div>
-
-                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                  <div><dt className="font-semibold text-slate-900">Slot</dt><dd className="mt-1 text-slate-600">{booking.slotLabel}</dd></div>
-                  <div><dt className="font-semibold text-slate-900">Client</dt><dd className="mt-1 capitalize text-slate-600">{booking.clientType}</dd></div>
-                  <div><dt className="font-semibold text-slate-900">Email</dt><dd className="mt-1 break-all text-slate-600">{booking.email}</dd></div>
-                  <div><dt className="font-semibold text-slate-900">Phone</dt><dd className="mt-1 text-slate-600">{booking.phone}</dd></div>
-                </dl>
-                {booking.notes ? <p className="mt-4 rounded-md bg-slate-50 p-3 text-sm text-slate-600">{booking.notes}</p> : null}
+                <p className="font-bold text-slate-950">{booking.customerName}</p>
+                <p className="mt-1 text-sm capitalize text-slate-500">{booking.clientType} client</p>
+                {booking.notes ? <p className="mt-2 line-clamp-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">{booking.notes}</p> : null}
               </div>
-
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <label className="grid gap-2 text-sm font-semibold text-slate-700">
-                  Status
-                  <select
-                    aria-label={`Status for ${booking.customerName}`}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2"
-                    value={booking.status}
-                    onChange={(event) => changeStatus(booking, event.target.value as Booking["status"])}
-                    disabled={savingId === booking._id}
-                  >
-                    {statusOptions.map((status) => (
-                      <option key={status.value} value={status.value}>{status.label}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button onClick={() => changeStatus(booking, "confirmed")} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800" disabled={savingId === booking._id} type="button">
-                    Confirm
-                  </button>
-                  <button onClick={() => setEditingBooking(booking)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={savingId === booking._id} type="button">
-                    Edit
-                  </button>
-                  <button onClick={() => changeStatus(booking, "reschedule_requested")} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={savingId === booking._id} type="button">
-                    Reschedule
-                  </button>
-                  <button onClick={() => changeStatus(booking, "completed")} className="rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50" disabled={savingId === booking._id} type="button">
-                    Complete
-                  </button>
-                  <button onClick={() => changeStatus(booking, "cancelled")} className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50" disabled={savingId === booking._id} type="button">
-                    Cancel
-                  </button>
-                  <button onClick={() => deleteBooking(booking)} className="col-span-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-100" disabled={savingId === booking._id} type="button">
-                    Delete booking
-                  </button>
-                </div>
+              <div>
+                <p className="font-semibold text-slate-900">{formatDateTime(booking.bookingDate)}</p>
+                <p className="mt-1 text-sm text-slate-500">{booking.slotLabel}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900">{booking.serviceName}</p>
+                <p className="mt-1 text-sm text-slate-500">{booking.providerName}</p>
+              </div>
+              <div>
+                <span className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-bold uppercase ${statusTone[booking.status]}`}>
+                  {formatStatus(booking.status)}
+                </span>
+              </div>
+              <div className="text-sm">
+                <p className="break-all font-semibold text-slate-800">{booking.email}</p>
+                <p className="mt-1 text-slate-500">{booking.phone}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => changeStatus(booking, "confirmed")} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800" disabled={savingId === booking._id} type="button">
+                  Confirm
+                </button>
+                <button onClick={() => setEditingBooking(booking)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={savingId === booking._id} type="button">
+                  Edit
+                </button>
+                <select
+                  aria-label={`Status for ${booking.customerName}`}
+                  className="col-span-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  value={booking.status}
+                  onChange={(event) => changeStatus(booking, event.target.value as Booking["status"])}
+                  disabled={savingId === booking._id}
+                >
+                  {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
               </div>
             </article>
           ))}
@@ -218,9 +413,9 @@ export function BookingsPanel() {
       </section>
 
       {editingBooking ? (
-        <Drawer title="Edit booking" onClose={() => setEditingBooking(null)}>
+        <Drawer title={editingBooking.customerName} onClose={() => setEditingBooking(null)}>
           <form onSubmit={handleEditSubmit} className="grid gap-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">Client type<select className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.clientType} onChange={(event) => setEditingBooking({ ...editingBooking, clientType: event.target.value as Booking["clientType"] })}>
                 <option value="new">New</option>
                 <option value="returning">Returning</option>
@@ -230,20 +425,25 @@ export function BookingsPanel() {
               </select></label>
             </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Customer name<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.customerName} onChange={(event) => setEditingBooking({ ...editingBooking, customerName: event.target.value })} required /></label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">Email<input className="rounded-md border border-slate-300 px-3 py-2" type="email" value={editingBooking.email} onChange={(event) => setEditingBooking({ ...editingBooking, email: event.target.value })} required /></label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">Phone<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.phone} onChange={(event) => setEditingBooking({ ...editingBooking, phone: event.target.value })} required /></label>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">Service name<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.serviceName} onChange={(event) => setEditingBooking({ ...editingBooking, serviceName: event.target.value })} required /></label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">Provider name<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.providerName} onChange={(event) => setEditingBooking({ ...editingBooking, providerName: event.target.value })} required /></label>
             </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Booking date<input className="rounded-md border border-slate-300 px-3 py-2" type="datetime-local" value={new Date(editingBooking.bookingDate).toISOString().slice(0, 16)} onChange={(event) => setEditingBooking({ ...editingBooking, bookingDate: event.target.value })} required /></label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Slot label<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.slotLabel} onChange={(event) => setEditingBooking({ ...editingBooking, slotLabel: event.target.value })} required /></label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Notes<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" value={editingBooking.notes || ""} onChange={(event) => setEditingBooking({ ...editingBooking, notes: event.target.value })} /></label>
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={savingId === editingBooking._id}>
-              {savingId === editingBooking._id ? "Saving..." : "Save booking"}
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={savingId === editingBooking._id}>
+                {savingId === editingBooking._id ? "Saving..." : "Save booking"}
+              </button>
+              <button className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 font-semibold text-rose-800 hover:bg-rose-100" type="button" onClick={() => deleteBooking(editingBooking)} disabled={savingId === editingBooking._id}>
+                Delete booking
+              </button>
+            </div>
           </form>
         </Drawer>
       ) : null}

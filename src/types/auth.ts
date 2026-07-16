@@ -1,3 +1,5 @@
+import type { Booking } from "./booking";
+
 export type Permission = {
   key: string;
   module: string;
@@ -50,6 +52,15 @@ export type CreateUserResponse = {
 export type DashboardStats = {
   bookingCount: number;
   pendingBookings: number;
+  confirmedBookings?: number;
+  completedBookings?: number;
+  cancelledBookings?: number;
+  todayBookings?: number;
+  tomorrowBookings?: number;
+  thisWeekBookings?: number;
+  thisMonthBookings?: number;
+  byStatus?: Partial<Record<Booking["status"], number>>;
+  recentBookings?: Booking[];
   userCount: number;
   roleCount: number;
 };
