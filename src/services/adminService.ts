@@ -158,6 +158,17 @@ export const createSlot = (serviceId: string, providerId: string, input: { date:
   });
 };
 
+export const createBulkSlots = (
+  serviceId: string,
+  providerId: string,
+  input: { dateFrom: string; dateTo: string; selectedDays: number[]; startTime: string; endTime: string; durationMinutes: number; capacity: number }
+) => {
+  return apiRequest<{ provider: Provider; created: number; skippedDuplicates: number; skippedClosed: number }>(`/admin/services/${serviceId}/providers/${providerId}/slots/bulk`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+};
+
 export const updateSlot = (serviceId: string, providerId: string, slotId: string, input: { date: string; startTime: string; endTime: string; capacity: number }) => {
   return apiRequest<{ service: Service }>(`/admin/services/${serviceId}/providers/${providerId}/slots/${slotId}`, {
     method: "PATCH",
@@ -193,4 +204,15 @@ export const deleteProvider = (serviceId: string, providerId: string) => {
 
 export const deleteSlot = (serviceId: string, providerId: string, slotId: string) => {
   return apiRequest<{ service: Service }>(`/admin/services/${serviceId}/providers/${providerId}/slots/${slotId}`, { method: "DELETE" });
+};
+
+export const addProviderClosedDate = (providerId: string, input: { date: string; reason: string }) => {
+  return apiRequest<{ provider: Provider }>(`/admin/providers/${providerId}/closed-dates`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+};
+
+export const deleteProviderClosedDate = (providerId: string, date: string) => {
+  return apiRequest<{ provider: Provider }>(`/admin/providers/${providerId}/closed-dates/${date}`, { method: "DELETE" });
 };

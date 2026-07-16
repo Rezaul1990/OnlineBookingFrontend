@@ -17,6 +17,7 @@ export type Provider = {
   bio?: string;
   imageUrl?: string;
   serviceIds?: string[];
+  closedDates?: Array<{ _id?: string; date: string; reason?: string }>;
   active: boolean;
   slots: BookingSlot[];
 };

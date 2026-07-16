@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  addProviderClosedDate,
+  createBulkSlots,
   createProvider,
   createService,
   createSlot,
   deleteProvider,
+  deleteProviderClosedDate,
   deleteService,
   deleteSlot,
   fetchAdminCatalog,
@@ -24,7 +27,6 @@ type DrawerMode = "service" | "provider" | "slot" | "serviceDetails" | "provider
 const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[], active: true };
 const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[], active: true };
 const slotInitial = { serviceId: "", providerId: "", slotId: "", date: "", startTime: "09:00", endTime: "10:00", capacity: 1 };
-const weeklyInitial = { enabled: true, selectedDays: [new Date().getDay()], startTime: "09:00", endTime: "17:00", capacity: 1, weeksAhead: 4 };
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pageSize = 8;
 
@@ -38,6 +40,29 @@ const addDays = (dateString: string, days: number) => {
   const date = new Date(`${dateString}T00:00:00`);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+};
+
+const endOfYearDateString = () => {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), 11, 31);
+  const timezoneOffset = end.getTimezoneOffset() * 60000;
+  return new Date(end.getTime() - timezoneOffset).toISOString().slice(0, 10);
+};
+
+const weeklyInitial = {
+  enabled: true,
+  selectedDays: [new Date().getDay()],
+  dateFrom: todayDateString(),
+  dateTo: endOfYearDateString(),
+  startTime: "09:00",
+  endTime: "17:00",
+  durationMinutes: 30,
+  capacity: 1
+};
+
+const timeToMinutes = (time: string) => {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
 };
 
 const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
@@ -89,6 +114,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const [providerForm, setProviderForm] = useState(providerInitial);
   const [slotForm, setSlotForm] = useState(slotInitial);
   const [weeklyForm, setWeeklyForm] = useState(weeklyInitial);
+  const [closedDateForm, setClosedDateForm] = useState({ date: todayDateString(), reason: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -105,6 +131,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const serviceName = (serviceId?: string) => services.find((service) => service._id === serviceId)?.name || "Unassigned";
   const selectedSlotService = services.find((service) => service._id === slotForm.serviceId);
   const slotProviderOptions = selectedSlotService?.providers || [];
+  const selectedSlotServiceDuration = selectedSlotService?.durationMinutes || 30;
 
   const filteredServices = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -122,6 +149,18 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const pagedProviders = filteredProviders.slice((providerPage - 1) * pageSize, providerPage * pageSize);
   const totalSlots = providers.reduce((total, provider) => total + provider.slots.length, 0);
 
+  const matchingDateCount = useMemo(() => {
+    if (!weeklyForm.dateFrom || !weeklyForm.dateTo || weeklyForm.dateFrom > weeklyForm.dateTo || !weeklyForm.selectedDays.length) return 0;
+    let count = 0;
+    for (let date = weeklyForm.dateFrom; date <= weeklyForm.dateTo; date = addDays(date, 1)) {
+      if (weeklyForm.selectedDays.includes(new Date(`${date}T00:00:00`).getDay())) count += 1;
+    }
+    return count;
+  }, [weeklyForm.dateFrom, weeklyForm.dateTo, weeklyForm.selectedDays]);
+
+  const intervalsPerDay = Math.max(Math.floor((timeToMinutes(weeklyForm.endTime) - timeToMinutes(weeklyForm.startTime)) / Math.max(weeklyForm.durationMinutes, 1)), 0);
+  const weeklyPreviewCount = matchingDateCount * intervalsPerDay;
+
   const loadCatalog = async () => {
     try {
       setLoading(true);
@@ -129,6 +168,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
       const data = await fetchAdminCatalog();
       setServices(data.services);
       setProviders(data.providers || []);
+      setSelectedProvider((current) => (current ? (data.providers || []).find((provider) => provider._id === current._id) || current : current));
+      setSelectedService((current) => (current ? data.services.find((service) => service._id === current._id) || current : current));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load catalog.");
     } finally {
@@ -146,6 +187,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
     setProviderForm(providerInitial);
     setSlotForm(slotInitial);
     setWeeklyForm(weeklyInitial);
+    setClosedDateForm({ date: todayDateString(), reason: "" });
     setSelectedService(null);
     setSelectedProvider(null);
   };
@@ -200,7 +242,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
 
   const openNewSlot = (serviceId = "", providerId = "") => {
     setSlotForm({ ...slotInitial, serviceId, providerId, date: todayDateString() });
-    setWeeklyForm(weeklyInitial);
+    const service = services.find((item) => item._id === serviceId);
+    setWeeklyForm({ ...weeklyInitial, durationMinutes: service?.durationMinutes || 30 });
     setDrawer("slot");
   };
 
@@ -279,19 +322,16 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
 
   const createWeeklySlots = async () => {
     if (!weeklyForm.selectedDays.length) throw new Error("Select at least one day.");
-    const today = todayDateString();
-    const dates = Array.from({ length: Math.max(1, weeklyForm.weeksAhead) * 7 }, (_, index) => addDays(today, index)).filter((date) => {
-      return weeklyForm.selectedDays.includes(new Date(`${date}T00:00:00`).getDay());
+    const result = await createBulkSlots(slotForm.serviceId, slotForm.providerId, {
+      dateFrom: weeklyForm.dateFrom,
+      dateTo: weeklyForm.dateTo,
+      selectedDays: weeklyForm.selectedDays,
+      startTime: weeklyForm.startTime,
+      endTime: weeklyForm.endTime,
+      durationMinutes: weeklyForm.durationMinutes,
+      capacity: weeklyForm.capacity
     });
-
-    for (const date of dates) {
-      await createSlot(slotForm.serviceId, slotForm.providerId, {
-        date,
-        startTime: weeklyForm.startTime,
-        endTime: weeklyForm.endTime,
-        capacity: weeklyForm.capacity
-      });
-    }
+    setNotice(`Created ${result.created} slots.${result.skippedDuplicates ? ` Skipped ${result.skippedDuplicates} duplicate slots.` : ""}${result.skippedClosed ? ` Skipped ${result.skippedClosed} slots on closed dates.` : ""}`);
   };
 
   const handleSlotSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -317,7 +357,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
           capacity: slotForm.capacity
         });
       }
-      setNotice(isEditingSlot ? "Time slot updated." : weeklyForm.enabled ? "Weekly availability added." : "Time slot added.");
+      if (isEditingSlot) setNotice("Time slot updated.");
+      else if (!weeklyForm.enabled) setNotice("Time slot added.");
       closeDrawer();
       await loadCatalog();
     } catch (requestError) {
@@ -399,7 +440,39 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
     }
   };
 
-  const weeklyPreviewCount = Math.max(1, weeklyForm.weeksAhead) * weeklyForm.selectedDays.length;
+  const handleAddClosedDate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedProvider) return;
+    setSaving("closed-date");
+    setError("");
+    setNotice("");
+    try {
+      await addProviderClosedDate(selectedProvider._id, closedDateForm);
+      setNotice("Provider close date added.");
+      setClosedDateForm({ date: todayDateString(), reason: "" });
+      await loadCatalog();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to add close date.");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const handleDeleteClosedDate = async (date: string) => {
+    if (!selectedProvider) return;
+    setSaving(date);
+    setError("");
+    setNotice("");
+    try {
+      await deleteProviderClosedDate(selectedProvider._id, date);
+      setNotice("Provider close date removed.");
+      await loadCatalog();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Unable to remove close date.");
+    } finally {
+      setSaving("");
+    }
+  };
 
   return (
     <div className="grid gap-5">
@@ -614,6 +687,33 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
                 )) : <span className="text-sm text-rose-600">No services assigned.</span>}
               </div>
             </section>
+            <section className="rounded-md border border-slate-200 bg-white p-3">
+              <h3 className="font-bold text-slate-950">Closed dates</h3>
+              <p className="mt-1 text-sm text-slate-500">Slots on these dates stay in admin but are hidden from client booking.</p>
+              <form onSubmit={handleAddClosedDate} className="mt-3 grid gap-2 sm:grid-cols-[170px_1fr_auto]">
+                <label className="grid gap-1 text-sm font-medium text-slate-700">
+                  Date
+                  <input className="rounded-md border border-slate-300 px-3 py-2" type="date" min={todayDateString()} value={closedDateForm.date} onChange={(event) => setClosedDateForm({ ...closedDateForm, date: event.target.value })} required />
+                </label>
+                <label className="grid gap-1 text-sm font-medium text-slate-700">
+                  Reason
+                  <input className="rounded-md border border-slate-300 px-3 py-2" placeholder="Holiday, leave, maintenance" value={closedDateForm.reason} onChange={(event) => setClosedDateForm({ ...closedDateForm, reason: event.target.value })} />
+                </label>
+                <button className="self-end rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60" type="submit" disabled={saving === "closed-date"}>
+                  {saving === "closed-date" ? "Adding..." : "Add close date"}
+                </button>
+              </form>
+              {selectedProvider.closedDates?.length ? (
+                <div className="mt-3 grid gap-2">
+                  {[...selectedProvider.closedDates].sort((first, second) => first.date.localeCompare(second.date)).map((closedDate) => (
+                    <div key={closedDate._id || closedDate.date} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                      <span className="font-semibold text-slate-700">{closedDate.date}{closedDate.reason ? <span className="ml-2 font-normal text-slate-500">{closedDate.reason}</span> : null}</span>
+                      <button className="font-bold text-rose-700 disabled:opacity-50" type="button" disabled={saving === closedDate.date} onClick={() => handleDeleteClosedDate(closedDate.date)}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-3 rounded-md border border-dashed border-slate-300 p-3 text-sm text-slate-600">No closed dates added.</p>}
+            </section>
             <section className="rounded-md border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-bold text-slate-950">Time slots</h3>
@@ -705,7 +805,11 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
         <Drawer title={isEditingSlot ? "Edit time slot" : "New time slot"} eyebrow="Availability" onClose={closeDrawer}>
           <form onSubmit={handleSlotSubmit} className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Service<select className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.serviceId} onChange={(event) => setSlotForm({ ...slotForm, serviceId: event.target.value, providerId: "" })} required disabled={isEditingSlot}>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Service<select className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.serviceId} onChange={(event) => {
+                const service = services.find((item) => item._id === event.target.value);
+                setSlotForm({ ...slotForm, serviceId: event.target.value, providerId: "" });
+                setWeeklyForm({ ...weeklyForm, durationMinutes: service?.durationMinutes || weeklyForm.durationMinutes });
+              }} required disabled={isEditingSlot}>
                 <option value="">Select service</option>
                 {services.map((service) => <option key={service._id} value={service._id}>{service.name}</option>)}
               </select></label>
@@ -716,13 +820,17 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
             </div>
             {!isEditingSlot ? (
               <div className="inline-grid w-fit grid-cols-2 rounded-md border border-slate-300 p-1 text-sm font-bold">
-                <button type="button" className={`rounded px-4 py-2 ${weeklyForm.enabled ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, enabled: true })}>Weekly</button>
+                <button type="button" className={`rounded px-4 py-2 ${weeklyForm.enabled ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, enabled: true })}>Recurring</button>
                 <button type="button" className={`rounded px-4 py-2 ${!weeklyForm.enabled ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, enabled: false })}>Single</button>
               </div>
             ) : null}
             {!isEditingSlot && weeklyForm.enabled ? (
               <fieldset className="grid gap-4 rounded-md border border-slate-200 p-3">
-                <legend className="px-1 text-sm font-semibold text-slate-800">Weekly availability</legend>
+                <legend className="px-1 text-sm font-semibold text-slate-800">Recurring availability</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">From date<input className="rounded-md border border-slate-300 px-3 py-2" type="date" min={todayDateString()} value={weeklyForm.dateFrom} onChange={(event) => setWeeklyForm({ ...weeklyForm, dateFrom: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">To date<input className="rounded-md border border-slate-300 px-3 py-2" type="date" min={weeklyForm.dateFrom || todayDateString()} value={weeklyForm.dateTo} onChange={(event) => setWeeklyForm({ ...weeklyForm, dateTo: event.target.value })} required /></label>
+                </div>
                 <div>
                   <p className="text-sm font-medium text-slate-700">Days</p>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -733,13 +841,13 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
                     ))}
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-5">
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.startTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, startTime: event.target.value })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.endTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, endTime: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Duration<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={5} value={weeklyForm.durationMinutes || selectedSlotServiceDuration} onChange={(event) => setWeeklyForm({ ...weeklyForm, durationMinutes: Number(event.target.value) })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={weeklyForm.capacity} onChange={(event) => setWeeklyForm({ ...weeklyForm, capacity: Number(event.target.value) })} required /></label>
-                  <label className="grid gap-2 text-sm font-medium text-slate-700">Weeks ahead<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} max={12} value={weeklyForm.weeksAhead} onChange={(event) => setWeeklyForm({ ...weeklyForm, weeksAhead: Number(event.target.value) })} /></label>
                 </div>
-                <p className="rounded-md bg-teal-50 p-3 text-sm font-semibold text-teal-800">This will create about {weeklyPreviewCount} slots for the selected provider and service.</p>
+                <p className="rounded-md bg-teal-50 p-3 text-sm font-semibold text-teal-800">This will create about {weeklyPreviewCount} slots across {matchingDateCount} matching dates. Existing duplicate slots and provider close dates will be skipped.</p>
               </fieldset>
             ) : (
               <>
@@ -751,7 +859,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
                 </div>
               </>
             )}
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save slot" : weeklyForm.enabled ? "Create weekly slots" : "Create slot"}</button>
+            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save slot" : weeklyForm.enabled ? "Create recurring slots" : "Create slot"}</button>
           </form>
         </Drawer>
       ) : null}
