@@ -49,6 +49,20 @@ export type Booking = {
   bookingDate: string;
   slotLabel: string;
   notes?: string;
+  paymentMethod: "cash" | "bkash" | "nagad" | "card";
+  paymentStatus: "unpaid" | "partial" | "paid" | "waived";
+  paymentAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  timeline?: Array<{
+    _id?: string;
+    action: string;
+    label: string;
+    actorName: string;
+    actorRole: string;
+    note?: string;
+    at: string;
+  }>;
   publicToken?: string;
   status: "pending_call" | "confirmed" | "reschedule_requested" | "cancelled" | "completed" | "no_show";
 };
@@ -65,5 +79,7 @@ export type CreateBookingInput = {
   slotId: string;
   bookingDate: string;
   slotLabel: string;
+  paymentMethod: Booking["paymentMethod"];
+  paymentAmount: number;
   notes: string;
 };

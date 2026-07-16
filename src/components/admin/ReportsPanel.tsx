@@ -110,7 +110,7 @@ export function ReportsPanel() {
 
   const exportCsv = () => {
     if (!report) return;
-    const header = ["Customer", "Email", "Phone", "Client type", "Service", "Provider", "Date", "Slot", "Status", "Notes"];
+    const header = ["Customer", "Email", "Phone", "Client type", "Service", "Provider", "Date", "Slot", "Status", "Payment method", "Payment status", "Amount", "Paid", "Balance", "Notes"];
     const rows = report.bookings.map((booking) => [
       booking.customerName,
       booking.email,
@@ -121,6 +121,11 @@ export function ReportsPanel() {
       new Date(booking.bookingDate).toLocaleString(),
       booking.slotLabel,
       statusLabels[booking.status],
+      booking.paymentMethod,
+      booking.paymentStatus,
+      booking.paymentAmount || 0,
+      booking.paidAmount || 0,
+      booking.balanceAmount || 0,
       booking.notes || ""
     ]);
     const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
@@ -218,6 +223,11 @@ export function ReportsPanel() {
             <StatCard label="Completed" value={`${summary.completionRate}%`} helper={`${summary.completed} completed`} />
             <StatCard label="Cancelled" value={`${summary.cancellationRate}%`} helper={`${summary.cancelled} cancelled`} />
           </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard label="Payment amount" value={`$${summary.totalPaymentAmount || 0}`} helper="Cancelled/no-show bookings are zeroed" />
+            <StatCard label="Paid amount" value={`$${summary.totalPaidAmount || 0}`} />
+            <StatCard label="Balance due" value={`$${summary.totalBalanceAmount || 0}`} />
+          </div>
 
           <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
             <section className="rounded-md border border-slate-200 bg-white shadow-sm">
@@ -287,7 +297,7 @@ export function ReportsPanel() {
               <p className="m-4 rounded-md border border-dashed border-slate-300 p-5 text-center text-sm text-slate-600">No bookings match this report filter.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[920px] text-left text-sm">
+                <table className="w-full min-w-[1080px] text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Client</th>
@@ -295,6 +305,7 @@ export function ReportsPanel() {
                       <th className="px-4 py-3">Provider</th>
                       <th className="px-4 py-3">Slot</th>
                       <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Payment</th>
                       <th className="px-4 py-3">Contact</th>
                     </tr>
                   </thead>
@@ -312,6 +323,10 @@ export function ReportsPanel() {
                           <p className="text-xs text-slate-500">{booking.slotLabel}</p>
                         </td>
                         <td className="px-4 py-3 font-semibold text-slate-800">{statusLabels[booking.status]}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          <p className="font-semibold capitalize">{booking.paymentMethod || "cash"} · {booking.paymentStatus || "unpaid"}</p>
+                          <p className="text-xs text-slate-500">${booking.paymentAmount || 0} / paid ${booking.paidAmount || 0}</p>
+                        </td>
                         <td className="px-4 py-3 text-slate-700">
                           <p className="break-all">{booking.email}</p>
                           <p className="text-xs text-slate-500">{booking.phone}</p>

@@ -121,6 +121,10 @@ const toCalendarDate = (value: string) => {
 const createLocalBooking = (input: CreateBookingInput): Booking => ({
   _id: `local-${Date.now()}`,
   ...input,
+  paymentStatus: "unpaid",
+  paidAmount: 0,
+  balanceAmount: input.paymentAmount,
+  timeline: [{ action: "created", label: "Booking request created", actorName: "Customer", actorRole: "customer", at: new Date().toISOString() }],
   status: "pending_call"
 });
 
@@ -136,6 +140,7 @@ export function BookingApp() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<Booking["paymentMethod"]>("cash");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
@@ -208,6 +213,8 @@ export function BookingApp() {
       slotId: selectedSlot._id,
       bookingDate: `${selectedSlot.date}T${selectedSlot.startTime}:00`,
       slotLabel: formatSlotDate(selectedSlot),
+      paymentMethod,
+      paymentAmount: selectedService.price,
       notes
     };
 
@@ -347,8 +354,9 @@ export function BookingApp() {
                   <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                     <div><dt className="font-semibold text-slate-900">Service</dt><dd className="mt-1 text-slate-600">{confirmedBooking.serviceName}</dd></div>
                     <div><dt className="font-semibold text-slate-900">Provider</dt><dd className="mt-1 text-slate-600">{confirmedBooking.providerName}</dd></div>
-                    <div><dt className="font-semibold text-slate-900">Time</dt><dd className="mt-1 text-slate-600">{confirmedBooking.slotLabel}</dd></div>
-                    <div><dt className="font-semibold text-slate-900">Status</dt><dd className="mt-1 capitalize text-slate-600">{confirmedBooking.status.replace("_", " ")}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Time</dt><dd className="mt-1 text-slate-600">{confirmedBooking.slotLabel}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Status</dt><dd className="mt-1 capitalize text-slate-600">{confirmedBooking.status.replace("_", " ")}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Payment</dt><dd className="mt-1 capitalize text-slate-600">{confirmedBooking.paymentMethod} · ${confirmedBooking.paymentAmount}</dd></div>
                   </dl>
 
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -462,6 +470,17 @@ export function BookingApp() {
                     <label className="grid gap-2 text-sm font-medium text-slate-700">Email<input className="rounded-md border border-slate-300 px-3 py-2" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                     <label className="grid gap-2 text-sm font-medium text-slate-700">Phone<input className="rounded-md border border-slate-300 px-3 py-2" value={phone} onChange={(event) => setPhone(event.target.value)} required minLength={6} /></label>
                   </div>
+                  <fieldset className="grid gap-3">
+                    <legend className="text-sm font-medium text-slate-700">Payment method</legend>
+                    <div className="grid gap-2 sm:grid-cols-4">
+                      {(["cash", "bkash", "nagad", "card"] as const).map((method) => (
+                        <button key={method} type="button" onClick={() => setPaymentMethod(method)} className={`rounded-md border px-4 py-3 text-sm font-bold capitalize ${paymentMethod === method ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                          {method}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-sm text-slate-500">Payable amount: ${selectedService?.price || 0}. Admin can mark paid/partial after receiving payment.</p>
+                  </fieldset>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Notes<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} /></label>
                   {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
                   {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
@@ -480,6 +499,7 @@ export function BookingApp() {
             <div><dt className="font-semibold text-slate-900">Service</dt><dd className="mt-1 text-slate-600">{selectedService?.name || "Not selected"}</dd></div>
             <div><dt className="font-semibold text-slate-900">Provider</dt><dd className="mt-1 text-slate-600">{selectedProvider?.name || "Not selected"}</dd></div>
             <div><dt className="font-semibold text-slate-900">Slot</dt><dd className="mt-1 text-slate-600">{selectedSlot ? formatSlotDate(selectedSlot) : "Not selected"}</dd></div>
+            <div><dt className="font-semibold text-slate-900">Payment</dt><dd className="mt-1 capitalize text-slate-600">{selectedService ? `$${selectedService.price} · ${paymentMethod}` : "Not selected"}</dd></div>
           </dl>
           <div className="mt-6 border-t border-slate-200 pt-5">
             <h3 className="font-semibold">Recent bookings</h3>

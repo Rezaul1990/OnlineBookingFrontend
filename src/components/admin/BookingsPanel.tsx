@@ -49,6 +49,12 @@ const sortOptions = [
 ];
 
 const pageSizeOptions = [10, 25, 50, 100];
+const paymentMethodLabels: Record<Booking["paymentMethod"], string> = {
+  cash: "Cash",
+  bkash: "bKash",
+  nagad: "Nagad",
+  card: "Card"
+};
 
 const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -361,11 +367,12 @@ export function BookingsPanel() {
       {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
       <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-[1.2fr_1.1fr_1fr_0.9fr_1fr_240px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+        <div className="hidden grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_160px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
           <span>Customer</span>
           <span>Booking</span>
           <span>Service</span>
           <span>Status</span>
+          <span>Payment</span>
           <span>Contact</span>
           <span>Actions</span>
         </div>
@@ -380,7 +387,7 @@ export function BookingsPanel() {
 
         <div className="divide-y divide-slate-200">
           {bookings.map((booking) => (
-            <article key={booking._id} className="grid gap-4 p-4 xl:grid-cols-[1.2fr_1.1fr_1fr_0.9fr_1fr_240px] xl:items-center">
+            <article key={booking._id} className="grid gap-4 p-4 xl:grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_160px] xl:items-center">
               <div>
                 <p className="font-bold text-slate-950">{booking.customerName}</p>
                 <p className="mt-1 text-sm capitalize text-slate-500">{booking.clientType} client</p>
@@ -400,19 +407,20 @@ export function BookingsPanel() {
                 </span>
               </div>
               <div className="text-sm">
+                <p className="font-bold capitalize text-slate-900">{paymentMethodLabels[booking.paymentMethod || "cash"]}</p>
+                <p className="mt-1 text-slate-500">${booking.paymentAmount || 0} · {booking.paymentStatus || "unpaid"}</p>
+              </div>
+              <div className="text-sm">
                 <p className="break-all font-semibold text-slate-800">{booking.email}</p>
                 <p className="mt-1 text-slate-500">{booking.phone}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => changeStatus(booking, "confirmed")} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800" disabled={savingId === booking._id} type="button">
-                  Confirm
-                </button>
+              <div className="grid gap-2">
                 <button onClick={() => setEditingBooking(booking)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled={savingId === booking._id} type="button">
                   Edit
                 </button>
                 <select
                   aria-label={`Status for ${booking.customerName}`}
-                  className="col-span-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
                   value={booking.status}
                   onChange={(event) => changeStatus(booking, event.target.value as Booking["status"])}
                   disabled={savingId === booking._id}
@@ -480,7 +488,47 @@ export function BookingsPanel() {
             </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Booking date<input className="rounded-md border border-slate-300 px-3 py-2" type="datetime-local" value={new Date(editingBooking.bookingDate).toISOString().slice(0, 16)} onChange={(event) => setEditingBooking({ ...editingBooking, bookingDate: event.target.value })} required /></label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Slot label<input className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.slotLabel} onChange={(event) => setEditingBooking({ ...editingBooking, slotLabel: event.target.value })} required /></label>
+            <fieldset className="grid gap-3 rounded-md border border-slate-200 p-3">
+              <legend className="px-1 text-sm font-bold text-slate-800">Payment</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Method<select className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.paymentMethod || "cash"} onChange={(event) => setEditingBooking({ ...editingBooking, paymentMethod: event.target.value as Booking["paymentMethod"] })}>
+                  {Object.entries(paymentMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select></label>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Payment status<select className="rounded-md border border-slate-300 px-3 py-2" value={editingBooking.paymentStatus || "unpaid"} onChange={(event) => setEditingBooking({ ...editingBooking, paymentStatus: event.target.value as Booking["paymentStatus"] })}>
+                  <option value="unpaid">Unpaid</option>
+                  <option value="partial">Partial</option>
+                  <option value="paid">Paid</option>
+                  <option value="waived">Waived</option>
+                </select></label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Amount<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={0} value={editingBooking.paymentAmount || 0} onChange={(event) => setEditingBooking({ ...editingBooking, paymentAmount: Number(event.target.value) })} /></label>
+                <label className="grid gap-2 text-sm font-medium text-slate-700">Paid<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={0} value={editingBooking.paidAmount || 0} onChange={(event) => setEditingBooking({ ...editingBooking, paidAmount: Number(event.target.value) })} /></label>
+                <div className="rounded-md bg-slate-50 p-3 text-sm">
+                  <p className="font-bold text-slate-700">Balance</p>
+                  <p className="mt-2 text-xl font-bold text-slate-950">${Math.max((editingBooking.paymentAmount || 0) - (editingBooking.paidAmount || 0), 0)}</p>
+                </div>
+              </div>
+              {["cancelled", "no_show"].includes(editingBooking.status) ? <p className="rounded-md bg-amber-50 p-3 text-sm font-semibold text-amber-800">Cancelled/no-show bookings are saved with payment amount, paid amount, and balance as zero.</p> : null}
+            </fieldset>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Notes<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" value={editingBooking.notes || ""} onChange={(event) => setEditingBooking({ ...editingBooking, notes: event.target.value })} /></label>
+            <section className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <h3 className="font-bold text-slate-950">Timeline</h3>
+              <div className="mt-3 grid gap-3">
+                {editingBooking.timeline?.length ? [...editingBooking.timeline].reverse().map((item) => (
+                  <article key={item._id || `${item.action}-${item.at}`} className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-slate-900">{item.label}</p>
+                        <p className="mt-1 text-slate-500">{item.actorName} · {item.actorRole}</p>
+                      </div>
+                      <time className="text-xs font-semibold text-slate-500">{new Date(item.at).toLocaleString()}</time>
+                    </div>
+                    {item.note ? <p className="mt-2 text-slate-600">{item.note}</p> : null}
+                  </article>
+                )) : <p className="text-sm text-slate-600">No timeline entries yet.</p>}
+              </div>
+            </section>
             <div className="grid gap-2 sm:grid-cols-2">
               <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={savingId === editingBooking._id}>
                 {savingId === editingBooking._id ? "Saving..." : "Save booking"}

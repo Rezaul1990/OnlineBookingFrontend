@@ -20,6 +20,10 @@ export type BookingReportSummary = {
   cancellationRate: number;
   completionRate: number;
   noShowRate: number;
+  totalPaymentAmount: number;
+  totalPaidAmount: number;
+  totalBalanceAmount: number;
+  waivedAmount: number;
 };
 
 export type BookingReportNameGroup = {
