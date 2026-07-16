@@ -33,6 +33,9 @@ export type BookingReportNameGroup = {
   cancelled: number;
   completed: number;
   noShow: number;
+  paymentAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
 };
 
 export type BookingReport = {
