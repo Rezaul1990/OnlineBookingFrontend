@@ -27,6 +27,7 @@ type DrawerMode = "service" | "provider" | "slot" | "serviceDetails" | "provider
 const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[], active: true };
 const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[], active: true };
 const slotInitial = { serviceId: "", providerId: "", slotId: "", date: "", startTime: "09:00", endTime: "10:00", capacity: 1 };
+const serviceCategories = ["Consulting", "Personal Service", "Healthcare", "Education", "Beauty & Wellness", "Home Service", "Professional Service", "Other"];
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pageSize = 8;
 
@@ -161,7 +162,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
     return count;
   }, [weeklyForm.dateFrom, weeklyForm.dateTo, weeklyForm.selectedDays]);
 
-  const intervalsPerDay = Math.max(Math.floor((timeToMinutes(weeklyForm.endTime) - timeToMinutes(weeklyForm.startTime)) / Math.max(weeklyForm.durationMinutes, 1)), 0);
+  const intervalsPerDay = Math.max(Math.floor((timeToMinutes(weeklyForm.endTime) - timeToMinutes(weeklyForm.startTime)) / Math.max(selectedSlotServiceDuration, 1)), 0);
   const weeklyPreviewCount = matchingDateCount * intervalsPerDay;
 
   const loadCatalog = async () => {
@@ -331,7 +332,7 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
       selectedDays: weeklyForm.selectedDays,
       startTime: weeklyForm.startTime,
       endTime: weeklyForm.endTime,
-      durationMinutes: weeklyForm.durationMinutes,
+      durationMinutes: selectedSlotServiceDuration,
       capacity: weeklyForm.capacity
     });
     setNotice(`Created ${result.created} slots.${result.skippedDuplicates ? ` Skipped ${result.skippedDuplicates} duplicate slots.` : ""}${result.skippedClosed ? ` Skipped ${result.skippedClosed} slots on closed dates.` : ""}`);
@@ -753,7 +754,10 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
           <form onSubmit={handleServiceSubmit} className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">Service name<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} required /></label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Category<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.category} onChange={(event) => setServiceForm({ ...serviceForm, category: event.target.value })} required /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Category<select className="rounded-md border border-slate-300 bg-white px-3 py-2" value={serviceForm.category} onChange={(event) => setServiceForm({ ...serviceForm, category: event.target.value })} required>
+                <option value="">Select category</option>
+                {serviceCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select></label>
             </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Description<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} required /></label>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -844,13 +848,12 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
                     ))}
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-5">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.startTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, startTime: event.target.value })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.endTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, endTime: event.target.value })} required /></label>
-                  <label className="grid gap-2 text-sm font-medium text-slate-700">Duration<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={5} value={weeklyForm.durationMinutes || selectedSlotServiceDuration} onChange={(event) => setWeeklyForm({ ...weeklyForm, durationMinutes: Number(event.target.value) })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={weeklyForm.capacity} onChange={(event) => setWeeklyForm({ ...weeklyForm, capacity: Number(event.target.value) })} required /></label>
                 </div>
-                <p className="rounded-md bg-teal-50 p-3 text-sm font-semibold text-teal-800">This will create about {weeklyPreviewCount} slots across {matchingDateCount} matching dates. Existing duplicate slots and provider close dates will be skipped.</p>
+                <p className="rounded-md bg-teal-50 p-3 text-sm font-semibold text-teal-800">Using the selected service duration ({selectedSlotServiceDuration} min), this will create about {weeklyPreviewCount} slots across {matchingDateCount} matching dates. Existing duplicate slots and provider close dates will be skipped.</p>
               </fieldset>
             ) : (
               <>
