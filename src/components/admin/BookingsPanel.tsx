@@ -6,8 +6,7 @@ import {
   deleteAdminBooking,
   fetchAdminBookings,
   type AdminBookingFilters,
-  updateAdminBooking,
-  updateAdminBookingStatus
+  updateAdminBooking
 } from "@/services/adminService";
 import type { Booking } from "@/types/booking";
 
@@ -193,21 +192,6 @@ export function BookingsPanel() {
     setFilters((current) => ({ ...current, ...next, page: next.page || 1 }));
   };
 
-  const changeStatus = async (booking: Booking, status: Booking["status"]) => {
-    setSavingId(booking._id);
-    setError("");
-    setNotice("");
-    try {
-      const data = await updateAdminBookingStatus(booking._id, status);
-      setBookings((current) => current.map((item) => (item._id === booking._id ? data.booking : item)));
-      setNotice("Booking status updated.");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to update booking.");
-    } finally {
-      setSavingId("");
-    }
-  };
-
   const deleteBooking = async (booking: Booking) => {
     if (!window.confirm("Delete this booking permanently?")) return;
     setSavingId(booking._id);
@@ -368,7 +352,7 @@ export function BookingsPanel() {
       {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
 
       <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_160px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
+        <div className="hidden grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_80px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500 xl:grid">
           <span>Customer</span>
           <span>Booking</span>
           <span>Service</span>
@@ -388,7 +372,7 @@ export function BookingsPanel() {
 
         <div className="divide-y divide-slate-200">
           {bookings.map((booking) => (
-            <article key={booking._id} className="grid gap-4 p-4 xl:grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_160px] xl:items-center">
+            <article key={booking._id} className="grid gap-4 p-4 xl:grid-cols-[1.2fr_1.1fr_1fr_0.9fr_0.9fr_1fr_80px] xl:items-center">
               <div>
                 <p className="font-bold text-slate-950">{booking.customerName}</p>
                 <p className="mt-1 text-sm capitalize text-slate-500">{booking.clientType} client</p>
@@ -426,15 +410,6 @@ export function BookingsPanel() {
                 >
                   <Pencil aria-hidden="true" size={15} strokeWidth={2.2} />
                 </button>
-                <select
-                  aria-label={`Status for ${booking.customerName}`}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm disabled:opacity-60"
-                  value={booking.status}
-                  onChange={(event) => changeStatus(booking, event.target.value as Booking["status"])}
-                  disabled={savingId === booking._id}
-                >
-                  {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                </select>
               </div>
             </article>
           ))}
