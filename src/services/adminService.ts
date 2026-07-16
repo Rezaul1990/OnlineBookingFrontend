@@ -1,5 +1,5 @@
 import { apiRequest, clearAdminToken, setAdminToken } from "./api";
-import type { Booking, Service } from "@/types/booking";
+import type { Booking, Provider, Service } from "@/types/booking";
 import type { AdminUser, CreateUserResponse, DashboardStats, Permission, PermissionGroup, Role } from "@/types/auth";
 import type { BookingReport, BookingReportFilters } from "@/types/report";
 
@@ -12,7 +12,12 @@ export type AdminBookingFilters = {
   serviceName?: string;
   providerName?: string;
   sort?: string;
+  page?: number;
+  pageSize?: number;
 };
+
+type ServiceInput = { name: string; category: string; description: string; durationMinutes: number; price: number; providerIds?: string[]; active?: boolean };
+type ProviderInput = { name: string; title: string; email: string; phone: string; bio: string; serviceIds?: string[]; active?: boolean };
 
 export const loginAdmin = (input: { email: string; password: string }) => {
   return apiRequest<{ token: string; user: AdminUser }>("/auth/login", {
@@ -40,14 +45,15 @@ export const fetchDashboard = () => {
 export const fetchAdminBookings = (filters: AdminBookingFilters = {}) => {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
-    if (value && value !== "all") params.set(key, value);
+    if (value && value !== "all") params.set(key, String(value));
   });
 
   const query = params.toString();
   return apiRequest<{
     bookings: Booking[];
     filters: AdminBookingFilters;
-    summary: { total: number; pendingCall: number; confirmed: number; completed: number; cancelled: number };
+    pagination?: { page: number; pageSize: number; total: number; totalPages: number };
+    summary: { total: number; matchingTotal?: number; pendingCall: number; confirmed: number; completed: number; cancelled: number };
     filterOptions: { services: string[]; providers: string[] };
   }>(`/admin/bookings${query ? `?${query}` : ""}`);
 };
@@ -114,31 +120,31 @@ export const setupPassword = (input: { token: string; password: string }) => {
 };
 
 export const fetchAdminCatalog = () => {
-  return apiRequest<{ services: Service[]; providers: Service["providers"] }>("/admin/catalog");
+  return apiRequest<{ services: Service[]; providers: Provider[] }>("/admin/catalog");
 };
 
-export const createService = (input: { name: string; category: string; description: string; durationMinutes: number; price: number; providerIds?: string[] }) => {
+export const createService = (input: ServiceInput) => {
   return apiRequest<{ service: Service }>("/admin/services", {
     method: "POST",
     body: JSON.stringify(input)
   });
 };
 
-export const updateService = (serviceId: string, input: { name: string; category: string; description: string; durationMinutes: number; price: number; providerIds?: string[] }) => {
+export const updateService = (serviceId: string, input: ServiceInput) => {
   return apiRequest<{ service: Service }>(`/admin/services/${serviceId}`, {
     method: "PATCH",
     body: JSON.stringify(input)
   });
 };
 
-export const createProvider = (serviceId: string, input: { name: string; title: string; email: string; phone: string; bio: string; serviceIds?: string[] }) => {
+export const createProvider = (serviceId: string, input: ProviderInput) => {
   return apiRequest<{ provider: Service["providers"][number] }>(`/admin/services/${serviceId}/providers`, {
     method: "POST",
     body: JSON.stringify(input)
   });
 };
 
-export const updateProvider = (serviceId: string, providerId: string, input: { name: string; title: string; email: string; phone: string; bio: string; serviceIds?: string[] }) => {
+export const updateProvider = (serviceId: string, providerId: string, input: ProviderInput) => {
   return apiRequest<{ provider: Service["providers"][number] }>(`/admin/services/${serviceId}/providers/${providerId}`, {
     method: "PATCH",
     body: JSON.stringify(input)

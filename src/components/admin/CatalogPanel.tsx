@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import {
   createProvider,
@@ -17,13 +18,15 @@ import {
 } from "@/services/adminService";
 import type { BookingSlot, Provider, Service } from "@/types/booking";
 
+type CatalogView = "services" | "providers";
 type DrawerMode = "service" | "provider" | "slot" | null;
 
-const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[] };
-const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[] };
-const slotInitial = { serviceId: "", providerId: "", slotId: "", date: "", startTime: "", endTime: "", capacity: 1 };
+const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[], active: true };
+const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[], active: true };
+const slotInitial = { serviceId: "", providerId: "", slotId: "", date: "", startTime: "09:00", endTime: "10:00", capacity: 1 };
 const weeklyInitial = { enabled: true, selectedDays: [new Date().getDay()], startTime: "09:00", endTime: "17:00", capacity: 1, weeksAhead: 4 };
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const pageSize = 8;
 
 const todayDateString = () => {
   const now = new Date();
@@ -37,13 +40,18 @@ const addDays = (dateString: string, days: number) => {
   return date.toISOString().slice(0, 10);
 };
 
-function Drawer({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+const toggleId = (ids: string[], id: string) => (ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
+
+function Drawer({ title, eyebrow, children, onClose }: { title: string; eyebrow: string; children: ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 bg-slate-950/30">
+    <div className="fixed inset-0 z-40 bg-slate-950/35">
       <button className="absolute inset-0 h-full w-full cursor-default" type="button" aria-label="Close drawer" onClick={onClose} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-xl">
-        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
-          <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+      <aside className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto bg-white shadow-xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{eyebrow}</p>
+            <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+          </div>
           <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button" onClick={onClose}>
             Close
           </button>
@@ -54,11 +62,26 @@ function Drawer({ title, children, onClose }: { title: string; children: ReactNo
   );
 }
 
-function toggleId(ids: string[], id: string) {
-  return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
+function Pagination({ page, total, onPage }: { page: number; total: number; onPage: (page: number) => void }) {
+  const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+  if (total <= pageSize) return null;
+
+  return (
+    <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-semibold text-slate-600">Page {page} of {totalPages} · {total} records</p>
+      <div className="flex gap-2">
+        <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+          Previous
+        </button>
+        <button className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+          Next
+        </button>
+      </div>
+    </div>
+  );
 }
 
-export function CatalogPanel() {
+export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const [services, setServices] = useState<Service[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [drawer, setDrawer] = useState<DrawerMode>(null);
@@ -70,12 +93,32 @@ export function CatalogPanel() {
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [query, setQuery] = useState("");
+  const [servicePage, setServicePage] = useState(1);
+  const [providerPage, setProviderPage] = useState(1);
 
   const isEditingService = Boolean(serviceForm.serviceId);
   const isEditingProvider = Boolean(providerForm.providerId);
   const isEditingSlot = Boolean(slotForm.slotId);
-  const selectedSlotService = useMemo(() => services.find((service) => service._id === slotForm.serviceId), [services, slotForm.serviceId]);
+  const serviceName = (serviceId?: string) => services.find((service) => service._id === serviceId)?.name || "Unassigned";
+  const selectedSlotService = services.find((service) => service._id === slotForm.serviceId);
   const slotProviderOptions = selectedSlotService?.providers || [];
+
+  const filteredServices = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search) return services;
+    return services.filter((service) => [service.name, service.category, service.description].some((value) => value.toLowerCase().includes(search)));
+  }, [query, services]);
+
+  const filteredProviders = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search) return providers;
+    return providers.filter((provider) => [provider.name, provider.title, provider.email || "", provider.phone || "", provider.bio || ""].some((value) => value.toLowerCase().includes(search)));
+  }, [providers, query]);
+
+  const pagedServices = filteredServices.slice((servicePage - 1) * pageSize, servicePage * pageSize);
+  const pagedProviders = filteredProviders.slice((providerPage - 1) * pageSize, providerPage * pageSize);
+  const totalSlots = providers.reduce((total, provider) => total + provider.slots.length, 0);
 
   const loadCatalog = async () => {
     try {
@@ -116,13 +159,14 @@ export function CatalogPanel() {
       description: service.description,
       durationMinutes: service.durationMinutes,
       price: service.price,
-      providerIds: service.providerIds || service.providers.map((provider) => provider._id)
+      providerIds: service.providerIds || service.providers.map((provider) => provider._id),
+      active: service.active
     });
     setDrawer("service");
   };
 
-  const openNewProvider = () => {
-    setProviderForm(providerInitial);
+  const openNewProvider = (serviceId = "") => {
+    setProviderForm({ ...providerInitial, serviceIds: serviceId ? [serviceId] : [] });
     setDrawer("provider");
   };
 
@@ -134,7 +178,8 @@ export function CatalogPanel() {
       email: provider.email || "",
       phone: provider.phone || "",
       bio: provider.bio || "",
-      serviceIds: provider.serviceIds || []
+      serviceIds: provider.serviceIds || [],
+      active: provider.active
     });
     setDrawer("provider");
   };
@@ -171,13 +216,11 @@ export function CatalogPanel() {
         description: serviceForm.description,
         durationMinutes: serviceForm.durationMinutes,
         price: serviceForm.price,
-        providerIds: serviceForm.providerIds
+        providerIds: serviceForm.providerIds,
+        active: serviceForm.active
       };
-      if (isEditingService) {
-        await updateService(serviceForm.serviceId, input);
-      } else {
-        await createService(input);
-      }
+      if (isEditingService) await updateService(serviceForm.serviceId, input);
+      else await createService(input);
       setNotice(isEditingService ? "Service updated." : "Service created.");
       closeDrawer();
       await loadCatalog();
@@ -190,6 +233,10 @@ export function CatalogPanel() {
 
   const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!providerForm.serviceIds.length) {
+      setError("Select at least one service for this provider.");
+      return;
+    }
     setSaving("provider");
     setError("");
     setNotice("");
@@ -200,14 +247,12 @@ export function CatalogPanel() {
         email: providerForm.email,
         phone: providerForm.phone,
         bio: providerForm.bio,
-        serviceIds: providerForm.serviceIds
+        serviceIds: providerForm.serviceIds,
+        active: providerForm.active
       };
-      const routeServiceId = providerForm.serviceIds[0] || services[0]?._id || "unassigned";
-      if (isEditingProvider) {
-        await updateProvider(routeServiceId, providerForm.providerId, input);
-      } else {
-        await createProvider(routeServiceId, input);
-      }
+      const routeServiceId = providerForm.serviceIds[0];
+      if (isEditingProvider) await updateProvider(routeServiceId, providerForm.providerId, input);
+      else await createProvider(routeServiceId, input);
       setNotice(isEditingProvider ? "Provider updated." : "Provider added.");
       closeDrawer();
       await loadCatalog();
@@ -218,6 +263,23 @@ export function CatalogPanel() {
     }
   };
 
+  const createWeeklySlots = async () => {
+    if (!weeklyForm.selectedDays.length) throw new Error("Select at least one day.");
+    const today = todayDateString();
+    const dates = Array.from({ length: Math.max(1, weeklyForm.weeksAhead) * 7 }, (_, index) => addDays(today, index)).filter((date) => {
+      return weeklyForm.selectedDays.includes(new Date(`${date}T00:00:00`).getDay());
+    });
+
+    for (const date of dates) {
+      await createSlot(slotForm.serviceId, slotForm.providerId, {
+        date,
+        startTime: weeklyForm.startTime,
+        endTime: weeklyForm.endTime,
+        capacity: weeklyForm.capacity
+      });
+    }
+  };
+
   const handleSlotSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving("slot");
@@ -225,36 +287,21 @@ export function CatalogPanel() {
     setNotice("");
     try {
       if (isEditingSlot) {
-        const input = {
+        await updateSlot(slotForm.serviceId, slotForm.providerId, slotForm.slotId, {
           date: slotForm.date,
           startTime: slotForm.startTime,
           endTime: slotForm.endTime,
           capacity: slotForm.capacity
-        };
-        await updateSlot(slotForm.serviceId, slotForm.providerId, slotForm.slotId, input);
-      } else if (weeklyForm.enabled) {
-        if (!weeklyForm.selectedDays.length) throw new Error("Select at least one day.");
-        const today = todayDateString();
-        const totalDays = Math.max(1, weeklyForm.weeksAhead) * 7;
-        const dates = Array.from({ length: totalDays }, (_, index) => addDays(today, index)).filter((date) => {
-          return weeklyForm.selectedDays.includes(new Date(`${date}T00:00:00`).getDay());
         });
-        for (const date of dates) {
-          await createSlot(slotForm.serviceId, slotForm.providerId, {
-            date,
-            startTime: weeklyForm.startTime,
-            endTime: weeklyForm.endTime,
-            capacity: weeklyForm.capacity
-          });
-        }
+      } else if (weeklyForm.enabled) {
+        await createWeeklySlots();
       } else {
-        const input = {
+        await createSlot(slotForm.serviceId, slotForm.providerId, {
           date: slotForm.date,
           startTime: slotForm.startTime,
           endTime: slotForm.endTime,
           capacity: slotForm.capacity
-        };
-        await createSlot(slotForm.serviceId, slotForm.providerId, input);
+        });
       }
       setNotice(isEditingSlot ? "Time slot updated." : weeklyForm.enabled ? "Weekly availability added." : "Time slot added.");
       closeDrawer();
@@ -338,220 +385,271 @@ export function CatalogPanel() {
     }
   };
 
-  const serviceName = (serviceId?: string) => services.find((service) => service._id === serviceId)?.name || "Unassigned";
+  const weeklyPreviewCount = Math.max(1, weeklyForm.weeksAhead) * weeklyForm.selectedDays.length;
 
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-950">Services and providers</h1>
-          <p className="mt-1 text-sm text-slate-600">Providers are managed separately. Assign providers from service create/edit, or assign services from provider create/edit.</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-teal-700">Catalog management</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-950">{view === "services" ? "Services" : "Providers"}</h1>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">
+            Services and providers are linked both ways. Assign providers from a service, assign services from a provider, and manage provider availability without leaving the admin shell.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={openNewService} className="rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800" type="button">New service</button>
-          <button onClick={openNewProvider} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">New provider</button>
-          <button onClick={() => openNewSlot()} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">New slot</button>
+          <button onClick={() => openNewProvider()} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">New provider</button>
+          <button onClick={() => openNewSlot()} className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" type="button">New time slot</button>
         </div>
       </div>
 
-      {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
-
-      <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">Services</h2>
-            <p className="mt-1 text-sm text-slate-600">Select providers for each service in new/edit drawers.</p>
-          </div>
+      <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <Link className={`rounded-md border px-4 py-2 text-sm font-bold ${view === "services" ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`} href="/admin/services">Services</Link>
+          <Link className={`rounded-md border px-4 py-2 text-sm font-bold ${view === "providers" ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`} href="/admin/providers">Providers</Link>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[220px_auto]">
+          <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder={`Search ${view}`} value={query} onChange={(event) => { setQuery(event.target.value); setServicePage(1); setProviderPage(1); }} />
           <button onClick={loadCatalog} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold" type="button">Refresh</button>
         </div>
-        {loading ? <p className="mt-5 text-slate-600">Loading catalog...</p> : null}
-        {!loading && services.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No services created yet.</p> : null}
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {services.map((service) => (
-            <article key={service._id} className="rounded-md border border-slate-200 p-4">
-              <img src={service.imageUrl || "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=500&q=80"} alt={service.name} className="h-32 w-full rounded-md object-cover" />
-              <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-teal-700">{service.category}</p>
-                  <h3 className="mt-1 text-lg font-bold">{service.name}</h3>
-                  <p className="mt-1 text-sm text-slate-600">{service.description}</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-800">{service.durationMinutes} min · ${service.price}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={() => openEditService(service)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit</button>
-                  <label className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                    Upload image
-                    <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleServiceImage(service._id, event)} />
-                  </label>
-                  <button onClick={() => handleDeleteService(service._id)} type="button" className="rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Delete</button>
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {service.providers.length ? service.providers.map((provider) => (
-                  <span key={provider._id} className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{provider.name}</span>
-                )) : <span className="text-sm text-slate-500">No providers assigned</span>}
-              </div>
-            </article>
-          ))}
-        </div>
+      </div>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Services", value: services.length },
+          { label: "Providers", value: providers.length },
+          { label: "Time slots", value: totalSlots },
+          { label: "Unassigned providers", value: providers.filter((provider) => !provider.serviceIds?.length).length }
+        ].map((card) => (
+          <article key={card.label} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{card.label}</p>
+            <p className="mt-2 text-2xl font-bold text-slate-950">{card.value}</p>
+          </article>
+        ))}
       </section>
 
-      <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">Providers</h2>
-            <p className="mt-1 text-sm text-slate-600">Providers stay separate and can be assigned to one or more services.</p>
+      {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {notice ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p> : null}
+
+      {view === "services" ? (
+        <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-950">Service list</h2>
+              <p className="mt-1 text-sm text-slate-500">Each service can have multiple providers.</p>
+            </div>
           </div>
-        </div>
-        {!loading && providers.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No providers created yet.</p> : null}
-        <div className="mt-5 grid gap-4">
-          {providers.map((provider) => (
-            <article key={provider._id} className="rounded-md border border-slate-200 p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <img src={provider.imageUrl || "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=300&q=80"} alt={provider.name} className="h-16 w-16 rounded-md object-cover" />
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-bold">{provider.name}</h3>
-                  <p className="text-sm text-slate-600">{provider.title}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {provider.serviceIds?.length ? provider.serviceIds.map((id) => (
-                      <span key={id} className="rounded-md bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800">{serviceName(id)}</span>
-                    )) : <span className="text-xs font-semibold text-slate-500">No services assigned</span>}
+          {loading ? <p className="mt-5 text-slate-600">Loading services...</p> : null}
+          {!loading && filteredServices.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No services found.</p> : null}
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            {pagedServices.map((service) => (
+              <article key={service._id} className="overflow-hidden rounded-md border border-slate-200">
+                <img src={service.imageUrl || "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=800&q=80"} alt={service.name} className="h-36 w-full object-cover" />
+                <div className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{service.category}</p>
+                      <h3 className="mt-1 text-lg font-bold text-slate-950">{service.name}</h3>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{service.description}</p>
+                      <p className="mt-2 text-sm font-bold text-slate-800">{service.durationMinutes} min · ${service.price}</p>
+                    </div>
+                    <span className={`rounded-md px-2 py-1 text-xs font-bold ${service.active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{service.active ? "Active" : "Inactive"}</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {service.providers.length ? service.providers.map((provider) => (
+                      <button key={provider._id} type="button" onClick={() => openEditProvider(provider)} className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200">{provider.name}</button>
+                    )) : <span className="text-sm text-slate-500">No providers assigned</span>}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button onClick={() => openEditService(service)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit service</button>
+                    <button onClick={() => openNewProvider(service._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add provider</button>
+                    <button onClick={() => openNewSlot(service._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
+                    <label className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                      Upload image
+                      <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleServiceImage(service._id, event)} />
+                    </label>
+                    <button onClick={() => handleDeleteService(service._id)} type="button" className="rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
                   </div>
                 </div>
-                <button onClick={() => openEditProvider(provider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit</button>
-                <label className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                  Upload image
-                  <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleProviderImage(provider, event)} />
-                </label>
-                <button onClick={() => openNewSlot(provider.serviceIds?.[0] || "", provider._id)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
-                <button onClick={() => handleDeleteProvider(provider)} type="button" className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Delete</button>
-              </div>
+              </article>
+            ))}
+          </div>
+          <Pagination page={servicePage} total={filteredServices.length} onPage={setServicePage} />
+        </section>
+      ) : null}
 
-              {provider.slots.length ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {provider.slots.map((slot) => (
-                    <span key={slot._id} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-                      {serviceName(slot.serviceId)} · {slot.date} {slot.startTime}-{slot.endTime}
-                      <button onClick={() => openEditSlot(provider, slot)} type="button" className="text-teal-700">Edit</button>
-                      <button onClick={() => handleDeleteSlot(provider, slot)} type="button" className="text-red-700">Delete</button>
-                    </span>
-                  ))}
+      {view === "providers" ? (
+        <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="font-bold text-slate-950">Provider list</h2>
+            <p className="mt-1 text-sm text-slate-500">Providers can be assigned to multiple services and own their time slots.</p>
+          </div>
+          {loading ? <p className="mt-5 text-slate-600">Loading providers...</p> : null}
+          {!loading && filteredProviders.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No providers found.</p> : null}
+          <div className="mt-5 grid gap-4">
+            {pagedProviders.map((provider) => (
+              <article key={provider._id} className="rounded-md border border-slate-200 p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+                  <img src={provider.imageUrl || "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80"} alt={provider.name} className="h-24 w-24 rounded-md object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-950">{provider.name}</h3>
+                        <p className="text-sm font-semibold text-slate-600">{provider.title}</p>
+                        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{provider.bio || "No bio added."}</p>
+                      </div>
+                      <span className={`rounded-md px-2 py-1 text-xs font-bold ${provider.active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{provider.active ? "Active" : "Inactive"}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {provider.serviceIds?.length ? provider.serviceIds.map((id) => (
+                        <span key={id} className="rounded-md bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800">{serviceName(id)}</span>
+                      )) : <span className="text-xs font-semibold text-rose-600">No services assigned</span>}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button onClick={() => openEditProvider(provider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit provider</button>
+                      <button onClick={() => openNewSlot(provider.serviceIds?.[0] || "", provider._id)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
+                      <label className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                        Upload image
+                        <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleProviderImage(provider, event)} />
+                      </label>
+                      <button onClick={() => handleDeleteProvider(provider)} type="button" className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
+                    </div>
+                  </div>
                 </div>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      </section>
+                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-bold text-slate-800">Time slots</p>
+                    <p className="text-xs font-semibold text-slate-500">{provider.slots.length} slots</p>
+                  </div>
+                  {provider.slots.length ? (
+                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                      {provider.slots.slice(0, 8).map((slot) => (
+                        <div key={slot._id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                          <span className="font-semibold text-slate-700">{serviceName(slot.serviceId)} · {slot.date} · {slot.startTime}-{slot.endTime} · cap {slot.capacity}</span>
+                          <span className="flex gap-2">
+                            <button onClick={() => openEditSlot(provider, slot)} type="button" className="font-bold text-teal-700">Edit</button>
+                            <button onClick={() => handleDeleteSlot(provider, slot)} type="button" className="font-bold text-rose-700">Delete</button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-600">No time slots yet.</p>}
+                </div>
+              </article>
+            ))}
+          </div>
+          <Pagination page={providerPage} total={filteredProviders.length} onPage={setProviderPage} />
+        </section>
+      ) : null}
 
       {drawer === "service" ? (
-        <Drawer title={isEditingService ? "Edit service" : "New service"} onClose={closeDrawer}>
+        <Drawer title={isEditingService ? "Edit service" : "New service"} eyebrow="Service setup" onClose={closeDrawer}>
           <form onSubmit={handleServiceSubmit} className="grid gap-4">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Service name<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} required /></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Category<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.category} onChange={(event) => setServiceForm({ ...serviceForm, category: event.target.value })} required /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Service name<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} required /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Category<input className="rounded-md border border-slate-300 px-3 py-2" value={serviceForm.category} onChange={(event) => setServiceForm({ ...serviceForm, category: event.target.value })} required /></label>
+            </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Description<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" value={serviceForm.description} onChange={(event) => setServiceForm({ ...serviceForm, description: event.target.value })} required /></label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="grid gap-2 text-sm font-medium text-slate-700">Duration<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={5} value={serviceForm.durationMinutes} onChange={(event) => setServiceForm({ ...serviceForm, durationMinutes: Number(event.target.value) })} required /></label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Duration minutes<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={5} value={serviceForm.durationMinutes} onChange={(event) => setServiceForm({ ...serviceForm, durationMinutes: Number(event.target.value) })} required /></label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">Price<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={0} value={serviceForm.price} onChange={(event) => setServiceForm({ ...serviceForm, price: Number(event.target.value) })} required /></label>
+              <label className="flex items-center gap-2 pt-7 text-sm font-bold text-slate-700"><input type="checkbox" checked={serviceForm.active} onChange={(event) => setServiceForm({ ...serviceForm, active: event.target.checked })} /> Active</label>
             </div>
             <fieldset className="grid gap-2 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-sm font-semibold text-slate-700">Providers for this service</legend>
               {providers.length ? providers.map((provider) => (
-                <label key={provider._id} className="flex items-center gap-2 text-sm text-slate-700">
+                <label key={provider._id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                  <span>{provider.name}<span className="ml-2 text-xs text-slate-500">{provider.title}</span></span>
                   <input type="checkbox" checked={serviceForm.providerIds.includes(provider._id)} onChange={() => setServiceForm({ ...serviceForm, providerIds: toggleId(serviceForm.providerIds, provider._id) })} />
-                  {provider.name}
                 </label>
               )) : <p className="text-sm text-slate-500">Create providers first, then assign them here.</p>}
             </fieldset>
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={saving === "service"}>{saving === "service" ? "Saving..." : isEditingService ? "Save changes" : "Create service"}</button>
+            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">Images are uploaded from the service list after saving, so the file is attached to a saved service record.</p>
+            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "service"}>{saving === "service" ? "Saving..." : isEditingService ? "Save service" : "Create service"}</button>
           </form>
         </Drawer>
       ) : null}
 
       {drawer === "provider" ? (
-        <Drawer title={isEditingProvider ? "Edit provider" : "New provider"} onClose={closeDrawer}>
+        <Drawer title={isEditingProvider ? "Edit provider" : "New provider"} eyebrow="Provider setup" onClose={closeDrawer}>
           <form onSubmit={handleProviderSubmit} className="grid gap-4">
             <fieldset className="grid gap-2 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-sm font-semibold text-slate-700">Services for this provider</legend>
               {services.length ? services.map((service) => (
-                <label key={service._id} className="flex items-center gap-2 text-sm text-slate-700">
+                <label key={service._id} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                  <span>{service.name}<span className="ml-2 text-xs text-slate-500">{service.category}</span></span>
                   <input type="checkbox" checked={providerForm.serviceIds.includes(service._id)} onChange={() => setProviderForm({ ...providerForm, serviceIds: toggleId(providerForm.serviceIds, service._id) })} />
-                  {service.name}
                 </label>
-              )) : <p className="text-sm text-slate-500">Create services first, then assign them here.</p>}
+              )) : <p className="text-sm text-slate-500">Create at least one service first.</p>}
             </fieldset>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Provider name<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} required /></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Title<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.title} onChange={(event) => setProviderForm({ ...providerForm, title: event.target.value })} required /></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Email<input className="rounded-md border border-slate-300 px-3 py-2" type="email" value={providerForm.email} onChange={(event) => setProviderForm({ ...providerForm, email: event.target.value })} /></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Phone<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.phone} onChange={(event) => setProviderForm({ ...providerForm, phone: event.target.value })} /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Provider name<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} required /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Title<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.title} onChange={(event) => setProviderForm({ ...providerForm, title: event.target.value })} required /></label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Email<input className="rounded-md border border-slate-300 px-3 py-2" type="email" value={providerForm.email} onChange={(event) => setProviderForm({ ...providerForm, email: event.target.value })} /></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Phone<input className="rounded-md border border-slate-300 px-3 py-2" value={providerForm.phone} onChange={(event) => setProviderForm({ ...providerForm, phone: event.target.value })} /></label>
+            </div>
             <label className="grid gap-2 text-sm font-medium text-slate-700">Bio<textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" value={providerForm.bio} onChange={(event) => setProviderForm({ ...providerForm, bio: event.target.value })} /></label>
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={saving === "provider"}>{saving === "provider" ? "Saving..." : isEditingProvider ? "Save changes" : "Add provider"}</button>
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={providerForm.active} onChange={(event) => setProviderForm({ ...providerForm, active: event.target.checked })} /> Active provider</label>
+            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">A provider must be assigned to at least one service. Images are uploaded from the provider list after saving.</p>
+            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "provider"}>{saving === "provider" ? "Saving..." : isEditingProvider ? "Save provider" : "Create provider"}</button>
           </form>
         </Drawer>
       ) : null}
 
       {drawer === "slot" ? (
-        <Drawer title={isEditingSlot ? "Edit slot" : "New slot"} onClose={closeDrawer}>
+        <Drawer title={isEditingSlot ? "Edit time slot" : "New time slot"} eyebrow="Availability" onClose={closeDrawer}>
           <form onSubmit={handleSlotSubmit} className="grid gap-4">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Service<select aria-label="Service" className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.serviceId} onChange={(event) => setSlotForm({ ...slotForm, serviceId: event.target.value, providerId: "" })} required disabled={isEditingSlot}>
-              <option value="">Select service</option>
-              {services.map((service) => <option key={service._id} value={service._id}>{service.name}</option>)}
-            </select></label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">Provider<select aria-label="Provider" className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.providerId} onChange={(event) => setSlotForm({ ...slotForm, providerId: event.target.value })} required disabled={isEditingSlot}>
-              <option value="">Select provider</option>
-              {slotProviderOptions.map((provider) => <option key={provider._id} value={provider._id}>{provider.name}</option>)}
-            </select></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Service<select className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.serviceId} onChange={(event) => setSlotForm({ ...slotForm, serviceId: event.target.value, providerId: "" })} required disabled={isEditingSlot}>
+                <option value="">Select service</option>
+                {services.map((service) => <option key={service._id} value={service._id}>{service.name}</option>)}
+              </select></label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">Provider<select className="rounded-md border border-slate-300 px-3 py-2" value={slotForm.providerId} onChange={(event) => setSlotForm({ ...slotForm, providerId: event.target.value })} required disabled={isEditingSlot || !slotForm.serviceId}>
+                <option value="">Select provider</option>
+                {slotProviderOptions.map((provider) => <option key={provider._id} value={provider._id}>{provider.name}</option>)}
+              </select></label>
+            </div>
             {!isEditingSlot ? (
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <input type="checkbox" checked={weeklyForm.enabled} onChange={(event) => setWeeklyForm({ ...weeklyForm, enabled: event.target.checked })} />
-                Weekly hours
-              </label>
+              <div className="inline-grid w-fit grid-cols-2 rounded-md border border-slate-300 p-1 text-sm font-bold">
+                <button type="button" className={`rounded px-4 py-2 ${weeklyForm.enabled ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, enabled: true })}>Weekly</button>
+                <button type="button" className={`rounded px-4 py-2 ${!weeklyForm.enabled ? "bg-slate-950 text-white" : "text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, enabled: false })}>Single</button>
+              </div>
             ) : null}
             {!isEditingSlot && weeklyForm.enabled ? (
               <fieldset className="grid gap-4 rounded-md border border-slate-200 p-3">
-                <legend className="px-1 text-sm font-semibold text-slate-800">Weekly hours</legend>
-                <label className="grid gap-2 text-sm font-medium text-slate-700">Location<select className="rounded-md border border-slate-300 px-3 py-2" defaultValue="main">
-                  <option value="main">Main location</option>
-                </select></label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">Mode</p>
-                    <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-700">
-                      <label className="flex items-center gap-1"><input type="checkbox" checked readOnly /> In person</label>
-                      <label className="flex items-center gap-1"><input type="checkbox" readOnly /> Phone</label>
-                      <label className="flex items-center gap-1"><input type="checkbox" readOnly /> Online</label>
-                    </div>
+                <legend className="px-1 text-sm font-semibold text-slate-800">Weekly availability</legend>
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Days</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {weekDays.map((day, index) => (
+                      <button key={day} type="button" className={`rounded-md border px-3 py-2 text-sm font-bold ${weeklyForm.selectedDays.includes(index) ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-600"}`} onClick={() => setWeeklyForm({ ...weeklyForm, selectedDays: toggleId(weeklyForm.selectedDays.map(String), String(index)).map(Number) })}>
+                        {day}
+                      </button>
+                    ))}
                   </div>
-                  <label className="grid gap-2 text-sm font-medium text-slate-700">Weeks ahead<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} max={12} value={weeklyForm.weeksAhead} onChange={(event) => setWeeklyForm({ ...weeklyForm, weeksAhead: Number(event.target.value) })} /></label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-[1fr_130px_130px]">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">Days</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-700">
-                      {weekDays.map((day, index) => (
-                        <label key={day} className="flex items-center gap-1">
-                          <input type="checkbox" checked={weeklyForm.selectedDays.includes(index)} onChange={() => setWeeklyForm({ ...weeklyForm, selectedDays: toggleId(weeklyForm.selectedDays.map(String), String(index)).map(Number) })} />
-                          {day}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                <div className="grid gap-3 sm:grid-cols-4">
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.startTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, startTime: event.target.value })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={weeklyForm.endTime} onChange={(event) => setWeeklyForm({ ...weeklyForm, endTime: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={weeklyForm.capacity} onChange={(event) => setWeeklyForm({ ...weeklyForm, capacity: Number(event.target.value) })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Weeks ahead<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} max={12} value={weeklyForm.weeksAhead} onChange={(event) => setWeeklyForm({ ...weeklyForm, weeksAhead: Number(event.target.value) })} /></label>
                 </div>
-                <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={weeklyForm.capacity} onChange={(event) => setWeeklyForm({ ...weeklyForm, capacity: Number(event.target.value) })} required /></label>
+                <p className="rounded-md bg-teal-50 p-3 text-sm font-semibold text-teal-800">This will create about {weeklyPreviewCount} slots for the selected provider and service.</p>
               </fieldset>
             ) : (
               <>
                 <label className="grid gap-2 text-sm font-medium text-slate-700">Date<input className="rounded-md border border-slate-300 px-3 py-2" type="date" min={todayDateString()} value={slotForm.date} onChange={(event) => setSlotForm({ ...slotForm, date: event.target.value })} required /></label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-2 text-sm font-medium text-slate-700">Start<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.startTime} onChange={(event) => setSlotForm({ ...slotForm, startTime: event.target.value })} required /></label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">End<input className="rounded-md border border-slate-300 px-3 py-2" type="time" value={slotForm.endTime} onChange={(event) => setSlotForm({ ...slotForm, endTime: event.target.value })} required /></label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={slotForm.capacity} onChange={(event) => setSlotForm({ ...slotForm, capacity: Number(event.target.value) })} required /></label>
                 </div>
-                <label className="grid gap-2 text-sm font-medium text-slate-700">Capacity<input className="rounded-md border border-slate-300 px-3 py-2" type="number" min={1} value={slotForm.capacity} onChange={(event) => setSlotForm({ ...slotForm, capacity: Number(event.target.value) })} required /></label>
               </>
             )}
-            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save changes" : weeklyForm.enabled ? "Add Hours" : "Add slot"}</button>
+            <button className="rounded-md bg-teal-700 px-4 py-3 font-semibold text-white hover:bg-teal-800" disabled={saving === "slot"}>{saving === "slot" ? "Saving..." : isEditingSlot ? "Save slot" : weeklyForm.enabled ? "Create weekly slots" : "Create slot"}</button>
           </form>
         </Drawer>
       ) : null}

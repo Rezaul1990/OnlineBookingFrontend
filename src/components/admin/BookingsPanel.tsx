@@ -48,6 +48,8 @@ const sortOptions = [
   { value: "status_asc", label: "Status" }
 ];
 
+const pageSizeOptions = [10, 25, 50, 100];
+
 const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
 
 const addDays = (date: Date, days: number) => {
@@ -124,12 +126,15 @@ export function BookingsPanel() {
     clientType: "all",
     serviceName: "",
     providerName: "",
-    sort: "bookingDate_desc"
+    sort: "bookingDate_desc",
+    page: 1,
+    pageSize: 25
   });
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [customRange, setCustomRange] = useState({ dateFrom: "", dateTo: "" });
   const [filterOptions, setFilterOptions] = useState({ services: [] as string[], providers: [] as string[] });
   const [summary, setSummary] = useState({ total: 0, pendingCall: 0, confirmed: 0, completed: 0, cancelled: 0 });
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState("");
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
@@ -149,6 +154,7 @@ export function BookingsPanel() {
       setBookings(data.bookings);
       setSummary(data.summary);
       setFilterOptions(data.filterOptions);
+      setPagination(data.pagination || { page: 1, pageSize: filters.pageSize || 25, total: data.summary.total, totalPages: 1 });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load bookings.");
     } finally {
@@ -171,9 +177,13 @@ export function BookingsPanel() {
   ].filter(Boolean).length;
 
   const resetFilters = () => {
-    setFilters({ search: "", status: "all", clientType: "all", serviceName: "", providerName: "", sort: "bookingDate_desc" });
+    setFilters({ search: "", status: "all", clientType: "all", serviceName: "", providerName: "", sort: "bookingDate_desc", page: 1, pageSize: 25 });
     setDatePreset("all");
     setCustomRange({ dateFrom: "", dateTo: "" });
+  };
+
+  const updateFilter = (next: Partial<AdminBookingFilters>) => {
+    setFilters((current) => ({ ...current, ...next, page: next.page || 1 }));
   };
 
   const changeStatus = async (booking: Booking, status: Booking["status"]) => {
@@ -270,7 +280,10 @@ export function BookingsPanel() {
                 datePreset === preset.value ? "border-teal-700 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
               }`}
               type="button"
-              onClick={() => setDatePreset(preset.value)}
+              onClick={() => {
+                setDatePreset(preset.value);
+                setFilters((current) => ({ ...current, page: 1 }));
+              }}
             >
               {preset.label}
             </button>
@@ -284,19 +297,19 @@ export function BookingsPanel() {
               className="rounded-md border border-slate-300 px-3 py-2 font-normal text-slate-950"
               placeholder="Name, phone, email, service"
               value={filters.search || ""}
-              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              onChange={(event) => updateFilter({ search: event.target.value })}
             />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             Status
-            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as AdminBookingFilters["status"] }))}>
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.status} onChange={(event) => updateFilter({ status: event.target.value as AdminBookingFilters["status"] })}>
               <option value="all">All statuses</option>
               {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             Client
-            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.clientType} onChange={(event) => setFilters((current) => ({ ...current, clientType: event.target.value as AdminBookingFilters["clientType"] }))}>
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.clientType} onChange={(event) => updateFilter({ clientType: event.target.value as AdminBookingFilters["clientType"] })}>
               <option value="all">All clients</option>
               <option value="new">New</option>
               <option value="returning">Returning</option>
@@ -304,21 +317,21 @@ export function BookingsPanel() {
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             Service
-            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.serviceName || ""} onChange={(event) => setFilters((current) => ({ ...current, serviceName: event.target.value }))}>
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.serviceName || ""} onChange={(event) => updateFilter({ serviceName: event.target.value })}>
               <option value="">All services</option>
               {filterOptions.services.map((service) => <option key={service} value={service}>{service}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             Provider
-            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.providerName || ""} onChange={(event) => setFilters((current) => ({ ...current, providerName: event.target.value }))}>
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.providerName || ""} onChange={(event) => updateFilter({ providerName: event.target.value })}>
               <option value="">All providers</option>
               {filterOptions.providers.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
             </select>
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             Sort
-            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.sort} onChange={(event) => setFilters((current) => ({ ...current, sort: event.target.value }))}>
+            <select className="rounded-md border border-slate-300 px-3 py-2 font-normal" value={filters.sort} onChange={(event) => updateFilter({ sort: event.target.value })}>
               {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
@@ -410,6 +423,38 @@ export function BookingsPanel() {
             </article>
           ))}
         </div>
+        {!loading && pagination.total > 0 ? (
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-semibold text-slate-600">
+              Page {pagination.page} of {pagination.totalPages} · {pagination.total} bookings
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                value={filters.pageSize || 25}
+                onChange={(event) => setFilters((current) => ({ ...current, pageSize: Number(event.target.value), page: 1 }))}
+              >
+                {pageSizeOptions.map((size) => <option key={size} value={size}>{size} / page</option>)}
+              </select>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                type="button"
+                disabled={pagination.page <= 1}
+                onClick={() => setFilters((current) => ({ ...current, page: Math.max((current.page || 1) - 1, 1) }))}
+              >
+                Previous
+              </button>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                type="button"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => setFilters((current) => ({ ...current, page: Math.min((current.page || 1) + 1, pagination.totalPages) }))}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {editingBooking ? (

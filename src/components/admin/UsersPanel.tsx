@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { createUser, fetchRoles, fetchUsers } from "@/services/adminService";
 import type { AdminUser, Role } from "@/types/auth";
 
+const pageSize = 10;
+
 export function UsersPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -12,6 +14,7 @@ export function UsersPanel() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const load = async () => {
     try {
@@ -19,6 +22,7 @@ export function UsersPanel() {
       const [userData, roleData] = await Promise.all([fetchUsers(), fetchRoles()]);
       setUsers(userData.users);
       setRoles(roleData.roles);
+      setPage(1);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load users.");
     } finally {
@@ -57,6 +61,9 @@ export function UsersPanel() {
     setSuccess("Setup link copied.");
   };
 
+  const totalPages = Math.max(Math.ceil(users.length / pageSize), 1);
+  const pagedUsers = users.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
       <div>
@@ -75,7 +82,7 @@ export function UsersPanel() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
+                {pagedUsers.map((user) => (
                   <tr key={user._id || user.id} className="border-t border-slate-200">
                     <td className="px-4 py-3 font-medium">{user.name}</td>
                     <td className="px-4 py-3 text-slate-600">{user.email}</td>
@@ -87,6 +94,15 @@ export function UsersPanel() {
                 ))}
               </tbody>
             </table>
+          ) : null}
+          {!loading && users.length > pageSize ? (
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-slate-600">Page {page} of {totalPages} · {users.length} users</p>
+              <div className="flex gap-2">
+                <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button>
+                <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</button>
+              </div>
+            </div>
           ) : null}
         </div>
       </div>

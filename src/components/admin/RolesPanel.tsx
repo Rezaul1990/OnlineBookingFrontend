@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { createRole, fetchPermissions, fetchRoles } from "@/services/adminService";
 import type { Permission, Role } from "@/types/auth";
 
+const pageSize = 8;
+
 export function RolesPanel() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -13,6 +15,7 @@ export function RolesPanel() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
 
   const load = async () => {
     try {
@@ -20,6 +23,7 @@ export function RolesPanel() {
       const [roleData, permissionData] = await Promise.all([fetchRoles(), fetchPermissions()]);
       setRoles(roleData.roles);
       setPermissions(permissionData.permissions);
+      setPage(1);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load roles.");
     } finally {
@@ -57,6 +61,8 @@ export function RolesPanel() {
     acc[permission.group].push(permission);
     return acc;
   }, {});
+  const totalPages = Math.max(Math.ceil(roles.length / pageSize), 1);
+  const pagedRoles = roles.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -65,7 +71,7 @@ export function RolesPanel() {
         <div className="mt-5 rounded-md border border-slate-200 bg-white shadow-sm">
           {loading ? <p className="p-5 text-slate-600">Loading roles...</p> : null}
           {!loading && roles.length === 0 ? <p className="p-5 text-slate-600">No roles yet.</p> : null}
-          {!loading && roles.map((role) => (
+          {!loading && pagedRoles.map((role) => (
             <article key={role._id} className="border-b border-slate-200 p-4 last:border-b-0">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -76,6 +82,15 @@ export function RolesPanel() {
               </div>
             </article>
           ))}
+          {!loading && roles.length > pageSize ? (
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-slate-600">Page {page} of {totalPages} · {roles.length} roles</p>
+              <div className="flex gap-2">
+                <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button>
+                <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

@@ -17,6 +17,7 @@ const statusOptions: Array<{ value: Booking["status"]; label: string }> = [
 const statusLabels = Object.fromEntries(statusOptions.map((status) => [status.value, status.label])) as Record<Booking["status"], string>;
 
 const csvCell = (value: string | number | undefined) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+const reportPageSize = 25;
 
 function StatCard({ label, value, helper }: { label: string; value: string | number; helper?: string }) {
   return (
@@ -73,6 +74,7 @@ export function ReportsPanel() {
   const [report, setReport] = useState<BookingReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [detailsPage, setDetailsPage] = useState(1);
 
   const loadReport = async (nextFilters = filters) => {
     try {
@@ -80,6 +82,7 @@ export function ReportsPanel() {
       setError("");
       const data = await fetchBookingReport(nextFilters);
       setReport(data.report);
+      setDetailsPage(1);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load reports.");
     } finally {
@@ -131,6 +134,8 @@ export function ReportsPanel() {
   };
 
   const summary = report?.summary;
+  const detailsTotalPages = Math.max(Math.ceil((report?.bookings.length || 0) / reportPageSize), 1);
+  const pagedReportBookings = report?.bookings.slice((detailsPage - 1) * reportPageSize, detailsPage * reportPageSize) || [];
 
   return (
     <div className="grid gap-6">
@@ -276,7 +281,7 @@ export function ReportsPanel() {
           <section className="rounded-md border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="font-bold text-slate-950">Filtered booking details</h2>
-              <span className="text-xs font-semibold uppercase text-slate-500">Showing up to 500 records</span>
+              <span className="text-xs font-semibold uppercase text-slate-500">{report.bookings.length} records</span>
             </div>
             {report.bookings.length === 0 ? (
               <p className="m-4 rounded-md border border-dashed border-slate-300 p-5 text-center text-sm text-slate-600">No bookings match this report filter.</p>
@@ -294,7 +299,7 @@ export function ReportsPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {report.bookings.map((booking) => (
+                    {pagedReportBookings.map((booking) => (
                       <tr key={booking._id}>
                         <td className="px-4 py-3">
                           <p className="font-semibold text-slate-900">{booking.customerName}</p>
@@ -317,6 +322,15 @@ export function ReportsPanel() {
                 </table>
               </div>
             )}
+            {report.bookings.length > reportPageSize ? (
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-600">Page {detailsPage} of {detailsTotalPages} · {report.bookings.length} bookings</p>
+                <div className="flex gap-2">
+                  <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={detailsPage <= 1} onClick={() => setDetailsPage((current) => current - 1)}>Previous</button>
+                  <button className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50" type="button" disabled={detailsPage >= detailsTotalPages} onClick={() => setDetailsPage((current) => current + 1)}>Next</button>
+                </div>
+              </div>
+            ) : null}
           </section>
         </>
       ) : null}

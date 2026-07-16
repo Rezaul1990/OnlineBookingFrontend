@@ -1,10 +1,10 @@
 import { AdminShell } from "@/components/admin/AdminShell";
 import { CatalogPanel } from "@/components/admin/CatalogPanel";
 
-export default function AdminCatalogPage() {
+export default function AdminProvidersPage() {
   return (
     <AdminShell>
-      <CatalogPanel view="services" />
+      <CatalogPanel view="providers" />
     </AdminShell>
   );
 }
