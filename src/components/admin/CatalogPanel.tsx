@@ -19,7 +19,7 @@ import {
 import type { BookingSlot, Provider, Service } from "@/types/booking";
 
 type CatalogView = "services" | "providers";
-type DrawerMode = "service" | "provider" | "slot" | null;
+type DrawerMode = "service" | "provider" | "slot" | "serviceDetails" | "providerDetails" | null;
 
 const serviceInitial = { serviceId: "", name: "", category: "", description: "", durationMinutes: 30, price: 0, providerIds: [] as string[], active: true };
 const providerInitial = { providerId: "", name: "", title: "", email: "", phone: "", bio: "", serviceIds: [] as string[], active: true };
@@ -96,6 +96,8 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
   const [query, setQuery] = useState("");
   const [servicePage, setServicePage] = useState(1);
   const [providerPage, setProviderPage] = useState(1);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
 
   const isEditingService = Boolean(serviceForm.serviceId);
   const isEditingProvider = Boolean(providerForm.providerId);
@@ -144,6 +146,18 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
     setProviderForm(providerInitial);
     setSlotForm(slotInitial);
     setWeeklyForm(weeklyInitial);
+    setSelectedService(null);
+    setSelectedProvider(null);
+  };
+
+  const openServiceDetails = (service: Service) => {
+    setSelectedService(service);
+    setDrawer("serviceDetails");
+  };
+
+  const openProviderDetails = (provider: Provider) => {
+    setSelectedProvider(provider);
+    setDrawer("providerDetails");
   };
 
   const openNewService = () => {
@@ -442,38 +456,43 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
           </div>
           {loading ? <p className="mt-5 text-slate-600">Loading services...</p> : null}
           {!loading && filteredServices.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No services found.</p> : null}
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
-            {pagedServices.map((service) => (
-              <article key={service._id} className="overflow-hidden rounded-md border border-slate-200">
-                <img src={service.imageUrl || "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=800&q=80"} alt={service.name} className="h-36 w-full object-cover" />
-                <div className="p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wide text-teal-700">{service.category}</p>
-                      <h3 className="mt-1 text-lg font-bold text-slate-950">{service.name}</h3>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{service.description}</p>
-                      <p className="mt-2 text-sm font-bold text-slate-800">{service.durationMinutes} min · ${service.price}</p>
-                    </div>
-                    <span className={`rounded-md px-2 py-1 text-xs font-bold ${service.active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{service.active ? "Active" : "Inactive"}</span>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {service.providers.length ? service.providers.map((provider) => (
-                      <button key={provider._id} type="button" onClick={() => openEditProvider(provider)} className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200">{provider.name}</button>
-                    )) : <span className="text-sm text-slate-500">No providers assigned</span>}
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button onClick={() => openEditService(service)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit service</button>
-                    <button onClick={() => openNewProvider(service._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add provider</button>
-                    <button onClick={() => openNewSlot(service._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
-                    <label className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                      Upload image
-                      <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleServiceImage(service._id, event)} />
-                    </label>
-                    <button onClick={() => handleDeleteService(service._id)} type="button" className="rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
-                  </div>
-                </div>
-              </article>
-            ))}
+          <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Service</th>
+                  <th className="px-4 py-3">Category</th>
+                  <th className="px-4 py-3">Duration</th>
+                  <th className="px-4 py-3">Price</th>
+                  <th className="px-4 py-3">Providers</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {pagedServices.map((service) => (
+                  <tr key={service._id} className="align-middle">
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-slate-950">{service.name}</p>
+                      <p className="mt-1 line-clamp-1 max-w-md text-xs text-slate-500">{service.description}</p>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-700">{service.category}</td>
+                    <td className="px-4 py-3 text-slate-600">{service.durationMinutes} min</td>
+                    <td className="px-4 py-3 font-semibold text-slate-800">${service.price}</td>
+                    <td className="px-4 py-3 text-slate-600">{service.providers.length}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-md px-2 py-1 text-xs font-bold ${service.active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{service.active ? "Active" : "Inactive"}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => openServiceDetails(service)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">View</button>
+                        <button onClick={() => openEditService(service)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <Pagination page={servicePage} total={filteredServices.length} onPage={setServicePage} />
         </section>
@@ -487,60 +506,143 @@ export function CatalogPanel({ view = "services" }: { view?: CatalogView }) {
           </div>
           {loading ? <p className="mt-5 text-slate-600">Loading providers...</p> : null}
           {!loading && filteredProviders.length === 0 ? <p className="mt-5 rounded-md border border-dashed border-slate-300 p-5 text-center text-slate-600">No providers found.</p> : null}
-          <div className="mt-5 grid gap-4">
-            {pagedProviders.map((provider) => (
-              <article key={provider._id} className="rounded-md border border-slate-200 p-4">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-                  <img src={provider.imageUrl || "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80"} alt={provider.name} className="h-24 w-24 rounded-md object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-950">{provider.name}</h3>
-                        <p className="text-sm font-semibold text-slate-600">{provider.title}</p>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{provider.bio || "No bio added."}</p>
-                      </div>
+          <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Provider</th>
+                  <th className="px-4 py-3">Title</th>
+                  <th className="px-4 py-3">Services</th>
+                  <th className="px-4 py-3">Slots</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {pagedProviders.map((provider) => (
+                  <tr key={provider._id} className="align-middle">
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-slate-950">{provider.name}</p>
+                      <p className="mt-1 line-clamp-1 max-w-md text-xs text-slate-500">{provider.bio || "No bio added."}</p>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-700">{provider.title}</td>
+                    <td className="px-4 py-3 text-slate-600">{provider.serviceIds?.length || 0}</td>
+                    <td className="px-4 py-3 text-slate-600">{provider.slots.length}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <p>{provider.phone || "No phone"}</p>
+                      <p className="text-xs">{provider.email || "No email"}</p>
+                    </td>
+                    <td className="px-4 py-3">
                       <span className={`rounded-md px-2 py-1 text-xs font-bold ${provider.active ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{provider.active ? "Active" : "Inactive"}</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {provider.serviceIds?.length ? provider.serviceIds.map((id) => (
-                        <span key={id} className="rounded-md bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-800">{serviceName(id)}</span>
-                      )) : <span className="text-xs font-semibold text-rose-600">No services assigned</span>}
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button onClick={() => openEditProvider(provider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit provider</button>
-                      <button onClick={() => openNewSlot(provider.serviceIds?.[0] || "", provider._id)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
-                      <label className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                        Upload image
-                        <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleProviderImage(provider, event)} />
-                      </label>
-                      <button onClick={() => handleDeleteProvider(provider)} type="button" className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-bold text-slate-800">Time slots</p>
-                    <p className="text-xs font-semibold text-slate-500">{provider.slots.length} slots</p>
-                  </div>
-                  {provider.slots.length ? (
-                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                      {provider.slots.slice(0, 8).map((slot) => (
-                        <div key={slot._id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
-                          <span className="font-semibold text-slate-700">{serviceName(slot.serviceId)} · {slot.date} · {slot.startTime}-{slot.endTime} · cap {slot.capacity}</span>
-                          <span className="flex gap-2">
-                            <button onClick={() => openEditSlot(provider, slot)} type="button" className="font-bold text-teal-700">Edit</button>
-                            <button onClick={() => handleDeleteSlot(provider, slot)} type="button" className="font-bold text-rose-700">Delete</button>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : <p className="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-600">No time slots yet.</p>}
-                </div>
-              </article>
-            ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => openProviderDetails(provider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">View</button>
+                        <button onClick={() => openEditProvider(provider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <Pagination page={providerPage} total={filteredProviders.length} onPage={setProviderPage} />
         </section>
+      ) : null}
+
+      {drawer === "serviceDetails" && selectedService ? (
+        <Drawer title={selectedService.name} eyebrow="Service details" onClose={closeDrawer}>
+          <div className="grid gap-5">
+            <img src={selectedService.imageUrl || "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80"} alt={selectedService.name} className="h-56 w-full rounded-md object-cover" />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase text-slate-500">Category</p>
+                <p className="mt-1 font-bold text-slate-950">{selectedService.category}</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase text-slate-500">Duration</p>
+                <p className="mt-1 font-bold text-slate-950">{selectedService.durationMinutes} min</p>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-bold uppercase text-slate-500">Price</p>
+                <p className="mt-1 font-bold text-slate-950">${selectedService.price}</p>
+              </div>
+            </div>
+            <section>
+              <h3 className="font-bold text-slate-950">Description</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{selectedService.description}</p>
+            </section>
+            <section>
+              <h3 className="font-bold text-slate-950">Assigned providers</h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedService.providers.length ? selectedService.providers.map((provider) => (
+                  <button key={provider._id} type="button" onClick={() => openProviderDetails(provider)} className="rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100">{provider.name}</button>
+                )) : <span className="text-sm text-slate-500">No providers assigned.</span>}
+              </div>
+            </section>
+            <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+              <button onClick={() => openEditService(selectedService)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit service</button>
+              <button onClick={() => openNewProvider(selectedService._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add provider</button>
+              <button onClick={() => openNewSlot(selectedService._id)} type="button" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
+              <label className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                Upload image
+                <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleServiceImage(selectedService._id, event)} />
+              </label>
+              <button onClick={() => handleDeleteService(selectedService._id)} type="button" className="rounded-md border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
+            </div>
+          </div>
+        </Drawer>
+      ) : null}
+
+      {drawer === "providerDetails" && selectedProvider ? (
+        <Drawer title={selectedProvider.name} eyebrow="Provider details" onClose={closeDrawer}>
+          <div className="grid gap-5">
+            <div className="flex gap-4">
+              <img src={selectedProvider.imageUrl || "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80"} alt={selectedProvider.name} className="h-24 w-24 rounded-md object-cover" />
+              <div>
+                <p className="font-bold text-slate-950">{selectedProvider.title}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{selectedProvider.bio || "No bio added."}</p>
+                <p className="mt-2 text-sm text-slate-500">{selectedProvider.email || "No email"} · {selectedProvider.phone || "No phone"}</p>
+              </div>
+            </div>
+            <section>
+              <h3 className="font-bold text-slate-950">Assigned services</h3>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedProvider.serviceIds?.length ? selectedProvider.serviceIds.map((id) => (
+                  <span key={id} className="rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">{serviceName(id)}</span>
+                )) : <span className="text-sm text-rose-600">No services assigned.</span>}
+              </div>
+            </section>
+            <section className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-950">Time slots</h3>
+                <button onClick={() => openNewSlot(selectedProvider.serviceIds?.[0] || "", selectedProvider._id)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Add slot</button>
+              </div>
+              {selectedProvider.slots.length ? (
+                <div className="mt-3 grid gap-2">
+                  {selectedProvider.slots.map((slot) => (
+                    <div key={slot._id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
+                      <span className="font-semibold text-slate-700">{serviceName(slot.serviceId)} · {slot.date} · {slot.startTime}-{slot.endTime} · cap {slot.capacity}</span>
+                      <span className="flex gap-2">
+                        <button onClick={() => openEditSlot(selectedProvider, slot)} type="button" className="font-bold text-teal-700">Edit</button>
+                        <button onClick={() => handleDeleteSlot(selectedProvider, slot)} type="button" className="font-bold text-rose-700">Delete</button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-3 rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-600">No time slots yet.</p>}
+            </section>
+            <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+              <button onClick={() => openEditProvider(selectedProvider)} type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Edit provider</button>
+              <label className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">
+                Upload image
+                <input className="sr-only" type="file" accept="image/*" onChange={(event) => handleProviderImage(selectedProvider, event)} />
+              </label>
+              <button onClick={() => handleDeleteProvider(selectedProvider)} type="button" className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Delete</button>
+            </div>
+          </div>
+        </Drawer>
       ) : null}
 
       {drawer === "service" ? (
